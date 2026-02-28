@@ -190,6 +190,8 @@ class HighlineSimulator:
         self._profile_T_R = []
         self._profile_V = []
         self._profile_d = []
+        self._profile_alpha_L = []
+        self._profile_alpha_R = []
 
         for i in range(N):
             ratio = (i + 0.5) / N
@@ -200,6 +202,8 @@ class HighlineSimulator:
             self._profile_T_R.append(f['T_R'])
             self._profile_V.append(f['v_angle'])
             self._profile_d.append(d)
+            self._profile_alpha_L.append(f['alpha_L_deg'])
+            self._profile_alpha_R.append(f['alpha_R_deg'])
 
     # ── Actualización ─────────────────────────────────────────────────
 
@@ -285,35 +289,44 @@ class HighlineSimulator:
                                  pos[1] - 26))
 
         # ── Flechas de tensión en anclajes ────────────────────────────
+        # Dirección calculada en coordenadas de pantalla (hacia la carga),
+        # proporcional a la tensión, color azul fijo.
+        BLUE = (100, 180, 255)
         arr_len_max = 90
-        for anchor, T_kN, alpha_deg, sign in [
-            (anch_L, f['T_L'], f['alpha_L_deg'], 1),
-            (anch_R, f['T_R'], f['alpha_R_deg'], -1),
-        ]:
+        for anchor, T_kN in [(anch_L, f['T_L']), (anch_R, f['T_R'])]:
             ratio = min(T_kN / ROPE_MBS, 1.0)
             arr_len = 30 + ratio * (arr_len_max - 30)
-            rad = math.radians(alpha_deg)
-            dx = sign * arr_len * math.cos(rad)
-            dy = arr_len * math.sin(rad)
+            lw = max(2, int(2 + ratio * 3))
 
-            end = (int(anchor[0] + dx), int(anchor[1] + dy))
-            col_t = tension_color(T_kN)
-            pygame.draw.line(self.screen, col_t, anchor, end, 3)
+            # Vector exacto desde el anclaje al punto de carga (pantalla)
+            vec_x = load_px - anchor[0]
+            vec_y = load_py - anchor[1]
+            norm = math.sqrt(vec_x * vec_x + vec_y * vec_y)
+            if norm < 1:
+                continue
+            ux = vec_x / norm
+            uy = vec_y / norm
+
+            ex = int(anchor[0] + arr_len * ux)
+            ey = int(anchor[1] + arr_len * uy)
+
+            pygame.draw.line(self.screen, BLUE, anchor, (ex, ey), lw)
+
             # Punta de flecha
-            perp_dx = -sign * 5 * math.sin(rad)
-            perp_dy = 5 * math.cos(rad)
-            tip = end
-            p1 = (int(tip[0] - sign * 10 * math.cos(rad) + perp_dx),
-                  int(tip[1] - 10 * math.sin(rad) + perp_dy))
-            p2 = (int(tip[0] - sign * 10 * math.cos(rad) - perp_dx),
-                  int(tip[1] - 10 * math.sin(rad) - perp_dy))
-            pygame.draw.polygon(self.screen, col_t, [tip, p1, p2])
+            perp_x = -uy
+            perp_y = ux
+            tip = (ex, ey)
+            p1 = (int(tip[0] - 10 * ux + 5 * perp_x),
+                  int(tip[1] - 10 * uy + 5 * perp_y))
+            p2 = (int(tip[0] - 10 * ux - 5 * perp_x),
+                  int(tip[1] - 10 * uy - 5 * perp_y))
+            pygame.draw.polygon(self.screen, BLUE, [tip, p1, p2])
 
             # Etiqueta
-            lbl = self.fs.render(f'{T_kN:.1f} kN', True, col_t)
-            off_x = 12 * sign
-            self.screen.blit(lbl, (end[0] + off_x - (0 if sign > 0 else lbl.get_width()),
-                                   end[1] - 6))
+            lbl = self.fs.render(f'{T_kN:.1f} kN', True, BLUE)
+            off_sign = 1 if anchor[0] < load_px else -1
+            lbl_x = ex + 12 * off_sign - (0 if off_sign > 0 else lbl.get_width())
+            self.screen.blit(lbl, (lbl_x, ey - 6))
 
         # ── Ángulo V con arco ─────────────────────────────────────────
         v_col = safety_color(f['v_angle'])
@@ -418,148 +431,251 @@ class HighlineSimulator:
         s = self.fx.render(f'W={f["W"]:.2f}kN', True, C['danger'])
         self.screen.blit(s, (cx + 8, arrow_top + 6))
 
-    # ── Dibujado: gráfico de tensiones ────────────────────────────────
+    # ── Dibujado: gráficos de tensión y ángulos ───────────────────────
 
     def _draw_graph(self, f):
         gx, gy = GRAPH_L, GRAPH_T
         gw = GRAPH_R - GRAPH_L
         gh = GRAPH_B - GRAPH_T
 
-        # Fondo
+        # Fondo (extendido para dos subgráficas)
         pygame.draw.rect(self.screen, (18, 18, 30),
-                         (gx - 5, gy - 5, gw + 10, gh + 30),
+                         (gx - 5, gy - 5, gw + 10, gh + 80),
                          border_radius=6)
 
-        # Título
-        s = self.fm.render('Tension (kN) vs Posicion en el vano', True, C['text'])
-        self.screen.blit(s, (gx + gw // 2 - s.get_width() // 2, gy - 3))
-
-        # Área del gráfico
         gx_inner = gx + 50
         gw_inner = gw - 60
-        gy_inner = gy + 18
-        gh_inner = gh - 28
 
-        pygame.draw.rect(self.screen, (12, 12, 22),
-                         (gx_inner, gy_inner, gw_inner, gh_inner))
-
-        # Escala vertical
-        all_T = self._profile_T_L + self._profile_T_R
-        if not all_T:
+        if not self._profile_T_L:
             return
-        max_T = max(max(all_T), NFPA_WORK_LOAD * 1.1, 5.0)
-        max_T = min(max_T, 80.0)  # cap para no explotar visualmente
+
+        # ── División del espacio en dos subgráficas ──────────────────
+        t_top = gy + 18         # subplot tensión: borde superior
+        t_h   = 82              # altura subplot tensión
+        a_top = t_top + t_h + 16  # subplot ángulos: borde superior
+        a_h   = 72              # altura subplot ángulos
 
         def map_x(ratio):
             return gx_inner + int(ratio * gw_inner)
 
-        def map_y(t_kn):
-            frac = t_kn / max_T
-            return gy_inner + gh_inner - int(frac * gh_inner)
+        # ── Subplot superior: TENSIÓN ─────────────────────────────────
+        pygame.draw.rect(self.screen, (12, 12, 22),
+                         (gx_inner, t_top, gw_inner, t_h))
 
-        # Grid horizontal + etiquetas
+        s = self.fx.render('kN', True, C['grid'])
+        self.screen.blit(s, (gx_inner - s.get_width() - 2, t_top))
+
+        all_T = self._profile_T_L + self._profile_T_R
+        max_T = max(max(all_T), NFPA_WORK_LOAD * 1.1, 5.0)
+        max_T = min(max_T, 80.0)
+
+        def map_t(t_kn):
+            frac = t_kn / max_T
+            return t_top + t_h - int(frac * t_h)
+
+        # Grid tensión
         for t_val in [5, 10, NFPA_WORK_LOAD, 20, 25, ROPE_MBS]:
             if t_val > max_T:
                 continue
-            yy = map_y(t_val)
+            yy = map_t(t_val)
             is_limit = t_val in (NFPA_WORK_LOAD, ROPE_MBS)
             col = C['danger'] if is_limit else C['grid']
-            style_w = 1
             pygame.draw.line(self.screen, col,
-                             (gx_inner, yy), (gx_inner + gw_inner, yy),
-                             style_w)
+                             (gx_inner, yy), (gx_inner + gw_inner, yy), 1)
             lbl = f'{t_val:.0f}' if t_val == int(t_val) else f'{t_val:.1f}'
             if is_limit:
-                lbl += ' NFPA' if t_val == NFPA_WORK_LOAD else ' MBS'
+                lbl += 'N' if t_val == NFPA_WORK_LOAD else 'M'
             s = self.fx.render(lbl, True, col)
-            self.screen.blit(s, (gx_inner - s.get_width() - 4, yy - 6))
-
-        # Grid vertical (25%, 50%, 75%)
-        for pct in [0.25, 0.5, 0.75]:
-            xx = map_x(pct)
-            pygame.draw.line(self.screen, C['grid'],
-                             (xx, gy_inner), (xx, gy_inner + gh_inner), 1)
-            s = self.fx.render(f'{pct * 100:.0f}%', True, C['grid'])
-            self.screen.blit(s, (xx - 8, gy_inner + gh_inner + 2))
-
-        # Ejes
-        s = self.fx.render('0%', True, C['grid'])
-        self.screen.blit(s, (gx_inner - 2, gy_inner + gh_inner + 2))
-        s = self.fx.render('100%', True, C['grid'])
-        self.screen.blit(s, (gx_inner + gw_inner - 18,
-                             gy_inner + gh_inner + 2))
+            self.screen.blit(s, (gx_inner - s.get_width() - 3, yy - 6))
 
         # Curvas T_L y T_R
         N = self._profile_n
-        for data, color, lbl_text in [
-            (self._profile_T_L, (100, 180, 255), 'T izq'),
-            (self._profile_T_R, (255, 160, 80), 'T der'),
-        ]:
-            pts = []
-            for i in range(N):
-                ratio = (i + 0.5) / N
-                px = map_x(ratio)
-                py = map_y(min(data[i], max_T))
-                py = max(gy_inner, min(py, gy_inner + gh_inner))
-                pts.append((px, py))
+        for data, color in [(self._profile_T_L, (100, 180, 255)),
+                            (self._profile_T_R, (255, 160, 80))]:
+            pts = [(map_x((i + 0.5) / N),
+                    max(t_top, min(map_t(min(data[i], max_T)), t_top + t_h)))
+                   for i in range(N)]
             if len(pts) > 1:
                 pygame.draw.lines(self.screen, color, False, pts, 2)
 
-        # Leyenda
-        leg_x = gx_inner + 8
-        leg_y = gy_inner + 6
-        pygame.draw.line(self.screen, (100, 180, 255),
-                         (leg_x, leg_y + 5), (leg_x + 20, leg_y + 5), 2)
-        s = self.fx.render('T izq', True, (100, 180, 255))
-        self.screen.blit(s, (leg_x + 24, leg_y))
-        leg_y += 14
-        pygame.draw.line(self.screen, (255, 160, 80),
-                         (leg_x, leg_y + 5), (leg_x + 20, leg_y + 5), 2)
-        s = self.fx.render('T der', True, (255, 160, 80))
-        self.screen.blit(s, (leg_x + 24, leg_y))
+        # Leyenda tensión
+        lx, ly = gx_inner + 8, t_top + 4
+        for color, lbl in [((100, 180, 255), 'T izq'), ((255, 160, 80), 'T der')]:
+            pygame.draw.line(self.screen, color, (lx, ly + 5), (lx + 16, ly + 5), 2)
+            s = self.fx.render(lbl, True, color)
+            self.screen.blit(s, (lx + 20, ly))
+            lx += s.get_width() + 34
 
-        # Línea vertical de posición actual
+        # Línea y puntos actuales
         cur_x = map_x(self.load_pos)
         pygame.draw.line(self.screen, C['warning'],
-                         (cur_x, gy_inner), (cur_x, gy_inner + gh_inner), 2)
-
-        # Puntos actuales
-        cur_T_L = f['T_L']
-        cur_T_R = f['T_R']
+                         (cur_x, t_top), (cur_x, t_top + t_h), 2)
         pygame.draw.circle(self.screen, (100, 180, 255),
-                           (cur_x, map_y(min(cur_T_L, max_T))), 5)
+                           (cur_x, max(t_top, min(map_t(min(f['T_L'], max_T)),
+                                                  t_top + t_h))), 5)
         pygame.draw.circle(self.screen, (255, 160, 80),
-                           (cur_x, map_y(min(cur_T_R, max_T))), 5)
+                           (cur_x, max(t_top, min(map_t(min(f['T_R'], max_T)),
+                                                  t_top + t_h))), 5)
+
+        # ── Subplot inferior: ÁNGULOS ─────────────────────────────────
+        # Título del subplot
+        s = self.fx.render(
+            'Angulos de la cuerda vs Posicion  '
+            '[aL/aR: escala 0-90 izq  |  V: escala 0-180 der]',
+            True, C['text'])
+        self.screen.blit(s, (gx_inner, a_top - 12))
+
+        pygame.draw.rect(self.screen, (12, 12, 22),
+                         (gx_inner, a_top, gw_inner, a_h))
+
+        MAX_ANG = 90.0   # escala alfa_L / alfa_R
+        MAX_V   = 180.0  # escala ángulo V
+
+        def map_a(deg, mx=MAX_ANG):
+            frac = max(0.0, min(deg / mx, 1.0))
+            return a_top + a_h - int(frac * a_h)
+
+        COL_AL = (100, 180, 255)
+        COL_AR = (255, 160, 80)
+        COL_V  = (180, 120, 255)
+
+        # Zonas de peligro del ángulo V como fondo coloreado
+        # (V grande = cuerda casi plana = fuerzas extremas)
+        V_ZONES = [
+            (0,   120, (15, 50, 15)),   # seguro   (V < 120°)
+            (120, 140, (50, 45,  8)),   # precaución
+            (140, 160, (55, 28,  8)),   # peligro
+            (160, 180, (60, 10, 10)),   # crítico
+        ]
+        for v_lo, v_hi, zone_col in V_ZONES:
+            y_top_z = max(a_top, map_a(v_hi, MAX_V))
+            y_bot_z = min(a_top + a_h, map_a(v_lo, MAX_V))
+            if y_bot_z > y_top_z:
+                pygame.draw.rect(self.screen, zone_col,
+                                 (gx_inner, y_top_z,
+                                  gw_inner, y_bot_z - y_top_z))
+
+        # Líneas de referencia del ángulo V con etiqueta a la derecha
+        V_REFS = [
+            (120, 'V=120°', C['accent']),
+            (140, 'V=140°', C['secondary']),
+            (160, 'V=160°', C['danger']),
+        ]
+        for v_deg, v_lbl, v_col in V_REFS:
+            yy = map_a(v_deg, MAX_V)
+            if a_top <= yy <= a_top + a_h:
+                pygame.draw.line(self.screen, v_col,
+                                 (gx_inner, yy), (gx_inner + gw_inner, yy), 1)
+                s = self.fx.render(v_lbl, True, v_col)
+                self.screen.blit(s, (gx_inner + gw_inner + 3, yy - 6))
+
+        # Grid izquierdo para alfa (0-90°) con etiqueta a la izquierda
+        for deg in [30, 60, 90]:
+            yy = map_a(deg, MAX_ANG)
+            if a_top <= yy <= a_top + a_h:
+                pygame.draw.line(self.screen, C['grid'],
+                                 (gx_inner, yy), (gx_inner + gw_inner, yy), 1)
+                s = self.fx.render(f'{deg}', True, C['grid'])
+                self.screen.blit(s, (gx_inner - s.get_width() - 3, yy - 6))
+
+        # Curvas alfa_L y alfa_R (escala 0-90°)
+        for data, color in [(self._profile_alpha_L, COL_AL),
+                            (self._profile_alpha_R, COL_AR)]:
+            pts = [(map_x((i + 0.5) / N),
+                    max(a_top, min(map_a(data[i], MAX_ANG), a_top + a_h)))
+                   for i in range(N)]
+            if len(pts) > 1:
+                pygame.draw.lines(self.screen, color, False, pts, 2)
+
+        # Curva ángulo V (escala 0-180°, trazos discontinuos)
+        pts_v = [(map_x((i + 0.5) / N),
+                  max(a_top, min(map_a(self._profile_V[i], MAX_V), a_top + a_h)))
+                 for i in range(N)]
+        for i in range(0, len(pts_v) - 1, 2):
+            pygame.draw.line(self.screen, COL_V, pts_v[i], pts_v[i + 1], 2)
+
+        # Leyenda
+        lx, ly = gx_inner + 8, a_top + 4
+        for color, lbl in [(COL_AL, 'aL: angulo izq (0-90)'),
+                           (COL_AR, 'aR: angulo der (0-90)'),
+                           (COL_V,  'V: apertura en carga (0-180, - -)')]:
+            dash_w = 1 if color == COL_V else 2
+            pygame.draw.line(self.screen, color,
+                             (lx, ly + 5), (lx + 16, ly + 5), dash_w)
+            s = self.fx.render(lbl, True, color)
+            self.screen.blit(s, (lx + 20, ly))
+            lx += s.get_width() + 36
+
+        # Línea vertical de posición actual
+        pygame.draw.line(self.screen, C['warning'],
+                         (cur_x, a_top), (cur_x, a_top + a_h), 2)
+
+        # Puntos y etiquetas de valor actual
+        al_py = max(a_top + 2, min(map_a(f['alpha_L_deg'], MAX_ANG), a_top + a_h - 2))
+        ar_py = max(a_top + 2, min(map_a(f['alpha_R_deg'], MAX_ANG), a_top + a_h - 2))
+        v_py  = max(a_top + 2, min(map_a(f['v_angle'], MAX_V),       a_top + a_h - 2))
+
+        pygame.draw.circle(self.screen, COL_AL, (cur_x, al_py), 5)
+        pygame.draw.circle(self.screen, COL_AR, (cur_x, ar_py), 5)
+        pygame.draw.circle(self.screen, COL_V,  (cur_x, v_py),  4)
+
+        # Etiquetas de valor junto al punto (a la derecha si hay espacio, si no a la izq)
+        lbl_off = 8 if cur_x + 8 + 40 < gx_inner + gw_inner else -48
+        s = self.fs.render(f"aL={f['alpha_L_deg']:.0f}", True, COL_AL)
+        self.screen.blit(s, (cur_x + lbl_off, al_py - 8))
+        s = self.fs.render(f"aR={f['alpha_R_deg']:.0f}", True, COL_AR)
+        self.screen.blit(s, (cur_x + lbl_off, ar_py + 2))
+        s = self.fs.render(f"V={f['v_angle']:.0f}", True, COL_V)
+        self.screen.blit(s, (cur_x + lbl_off, v_py - 16))
+
+        # ── Eje X compartido (etiquetas de posición) ─────────────────
+        for pct in [0.0, 0.25, 0.5, 0.75, 1.0]:
+            xx = map_x(pct)
+            pygame.draw.line(self.screen, C['grid'],
+                             (xx, a_top), (xx, a_top + a_h), 1)
+            s = self.fx.render(f'{int(pct*100)}%', True, C['grid'])
+            self.screen.blit(s, (xx - s.get_width() // 2,
+                                 a_top + a_h + 3))
 
     # ── Dibujado: panel de datos ──────────────────────────────────────
 
     def _draw_panel(self, f):
         px, py = PANEL_L, PANEL_T
         pw = WIDTH - PANEL_L - 15
-        ph = GRAPH_B - PANEL_T + 20
+        ph = HEIGHT - PANEL_T - 52   # llena toda la altura hasta la barra de controles
 
         pygame.draw.rect(self.screen, C['panel'],
                          (px, py, pw, ph), border_radius=8)
         pygame.draw.rect(self.screen, C['primary'],
                          (px, py, pw, ph), width=1, border_radius=8)
 
+        # Limitar todo el dibujo al interior del recuadro
+        self.screen.set_clip(pygame.Rect(px + 2, py + 2, pw - 4, ph - 4))
+
         x = px + 12
         y = py + 10
+        y_max = py + ph - 6   # límite inferior del contenido
 
         def heading(text, color=C['primary']):
             nonlocal y
+            if y > y_max:
+                return
             s = self.fb.render(text, True, color)
             self.screen.blit(s, (x, y))
             y += 24
 
         def line(text, color=C['text']):
             nonlocal y
+            if y > y_max:
+                return
             s = self.fs.render(text, True, color)
             self.screen.blit(s, (x + 5, y))
             y += 17
 
         def sep():
             nonlocal y
+            if y > y_max:
+                return
             pygame.draw.line(self.screen, C['grid'],
                              (x, y + 2), (x + pw - 24, y + 2), 1)
             y += 8
@@ -704,10 +820,15 @@ class HighlineSimulator:
             'Mas flecha = menos fuerza = mas seguro.',
         ]
         for r in rules:
+            if y + 13 > y_max:
+                break
             if r:
                 s = self.fx.render(r, True, C['dark_text'])
                 self.screen.blit(s, (x + 5, y))
             y += 13
+
+        # Restaurar clip completo
+        self.screen.set_clip(None)
 
     # ── Dibujado: controles ───────────────────────────────────────────
 
