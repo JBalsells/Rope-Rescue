@@ -1,0 +1,934 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Física del Rescate — Vectores y Suma de N Fuerzas</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0f0f1a;
+      color: #ECEFF1;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 14px 12px 20px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: 1.45rem;
+      color: #00BCD4;
+      text-align: center;
+      margin-bottom: 5px;
+      letter-spacing: 0.4px;
+    }
+
+    .info-bar {
+      color: #FFC107;
+      font-size: 0.82rem;
+      font-style: italic;
+      text-align: center;
+      max-width: 1110px;
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+
+    .canvas-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    canvas { display: block; border-radius: 6px; border: 1px solid #2a2a3e; }
+
+    /* ── Controles ── */
+    .controls {
+      width: 100%;
+      max-width: 1110px;
+      background: #16213e;
+      border: 1px solid #2a2a3e;
+      border-radius: 8px;
+      padding: 12px 22px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    .controls-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .controls-title {
+      font-size: 0.88rem;
+      color: #00BCD4;
+      font-weight: bold;
+      letter-spacing: 0.3px;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 8px;
+    }
+
+    button {
+      padding: 6px 18px;
+      border: none;
+      border-radius: 5px;
+      font-size: 0.85rem;
+      font-weight: bold;
+      cursor: pointer;
+      transition: opacity 0.15s, filter 0.15s;
+    }
+    button:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
+    }
+    #btnAdd {
+      background: #1a3a1a;
+      color: #4CAF50;
+      border: 1px solid #4CAF50;
+    }
+    #btnAdd:not(:disabled):hover { filter: brightness(1.25); }
+    #btnRem {
+      background: #3a1a1a;
+      color: #F44336;
+      border: 1px solid #F44336;
+    }
+    #btnRem:not(:disabled):hover { filter: brightness(1.25); }
+
+    /* ── Filas de sliders ── */
+    #sliderContainer {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .vector-group {
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+      padding: 6px 8px;
+      border-radius: 6px;
+      border: 1px solid #2a2a3e;
+      background: rgba(255,255,255,0.02);
+    }
+
+    .slider-row {
+      display: grid;
+      grid-template-columns: 140px 1fr 80px;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .slider-label {
+      font-size: 0.84rem;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      cursor: pointer;
+      height: 4px;
+    }
+
+    .slider-val {
+      font-size: 0.88rem;
+      font-weight: bold;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .footer {
+      margin-top: 10px;
+      font-size: 0.74rem;
+      color: #ECEFF1;
+      opacity: 0.5;
+      font-style: italic;
+      text-align: center;
+      max-width: 1110px;
+      line-height: 1.6;
+    }
+
+  </style>
+</head>
+<body>
+
+
+<h1>FÍSICA DEL RESCATE — Vectores y Suma de N Fuerzas</h1>
+
+<p class="info-bar">
+  Las fuerzas nunca se suman aritméticamente &nbsp;|&nbsp;
+  Magnitud + dirección = vector. Crítico en anclajes y tirolesas &nbsp;|&nbsp;
+  R = &radic;((&#x03A3; F&#x1D62;&middot;cos&theta;&#x1D62;)&sup2; + (&#x03A3; F&#x1D62;&middot;sin&theta;&#x1D62;)&sup2;)
+</p>
+
+<div class="canvas-row">
+  <canvas id="cvDiagram" width="560" height="492"></canvas>
+  <canvas id="cvInfo"    width="530" height="492"></canvas>
+</div>
+
+<div class="controls">
+  <div class="controls-header">
+    <span class="controls-title" id="ctrlTitle">Controles — 2 fuerzas activas</span>
+    <div class="btn-group">
+      <button id="btnAdd">+ Agregar F</button>
+      <button id="btnRem">&#8722; Eliminar F</button>
+    </div>
+  </div>
+  <div id="sliderContainer"></div>
+</div>
+
+<p class="footer">
+  Paralelogramo de fuerzas visible con exactamente 2 vectores &nbsp;|&nbsp;
+  Eficiencia = |R| / &Sigma;|F&#x1D62;| &times; 100% &nbsp;|&nbsp;
+  &lt;60° seguro &nbsp;|&nbsp; &lt;120° moderado &nbsp;|&nbsp; &ge;120° peligroso
+</p>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════
+//  Paleta de colores
+// ══════════════════════════════════════════════════════════════════════
+const CLR = {
+  bg:        '#0f0f1a',
+  panel:     '#16213e',
+  primary:   '#00BCD4',
+  secondary: '#FF5722',
+  accent:    '#4CAF50',
+  warning:   '#FFC107',
+  danger:    '#F44336',
+  info:      '#2196F3',
+  text:      '#ECEFF1',
+  grid:      '#2a2a3e',
+  rope:      '#FFA726',
+  anchor:    '#78909C',
+};
+
+const VECTOR_COLORS = [
+  '#2196F3',  // F1 — azul
+  '#4CAF50',  // F2 — verde
+  '#FF5722',  // F3 — naranja-rojo
+  '#E91E63',  // F4 — rosa
+  '#9C27B0',  // F5 — morado
+  '#00BCD4',  // F6 — cian
+];
+
+const MAX_VECTORS = 6;
+const MIN_VECTORS = 1;
+
+// ══════════════════════════════════════════════════════════════════════
+//  Estado del sistema
+// ══════════════════════════════════════════════════════════════════════
+let vectors = [
+  { angle: -120, magnitude: 0.78 },
+  { angle:  -60, magnitude: 0.78 },
+];
+
+// ══════════════════════════════════════════════════════════════════════
+//  Canvas
+// ══════════════════════════════════════════════════════════════════════
+const cvD  = document.getElementById('cvDiagram');
+const cvI  = document.getElementById('cvInfo');
+const ctxD = cvD.getContext('2d');
+const ctxI = cvI.getContext('2d');
+
+// ══════════════════════════════════════════════════════════════════════
+//  Física
+// ══════════════════════════════════════════════════════════════════════
+function computeSystem(vecs) {
+  let cx = 0, cy = 0, sumMag = 0;
+  for (const v of vecs) {
+    const rad = v.angle * Math.PI / 180;
+    cx += v.magnitude * Math.cos(rad);
+    cy += v.magnitude * Math.sin(rad);
+    sumMag += v.magnitude;
+  }
+  const R = Math.sqrt(cx * cx + cy * cy);
+  const rAngle = Math.atan2(cy, cx) * 180 / Math.PI;
+  const efficiency = sumMag > 0 ? (R / sumMag) * 100 : 0;
+  return { cx, cy, R, rAngle, sumMag, efficiency };
+}
+
+function maxSpreadAngle(vecs) {
+  if (vecs.length < 2) return 0;
+  let maxSpread = 0;
+  for (let i = 0; i < vecs.length; i++) {
+    for (let j = i + 1; j < vecs.length; j++) {
+      let d = Math.abs(vecs[i].angle - vecs[j].angle);
+      if (d > 180) d = 360 - d;
+      if (d > maxSpread) maxSpread = d;
+    }
+  }
+  return maxSpread;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Utilidades de dibujo
+// ══════════════════════════════════════════════════════════════════════
+function rrect(ctx, x, y, w, h, r = 5) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y,      x + w, y + r,      r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h,  x + w - r, y + h,  r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x,      y + h,  x,      y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x,      y,       x + r,  y,          r);
+  ctx.closePath();
+}
+
+function drawArrow(ctx, x1, y1, x2, y2, color, lw, hs) {
+  lw = lw || 2.5;
+  hs = hs || 13;
+  const dx  = x2 - x1, dy = y2 - y1;
+  const ang = Math.atan2(dy, dx);
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle   = color;
+  ctx.lineWidth   = lw;
+  ctx.lineCap     = 'round';
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hs * Math.cos(ang - 0.38), y2 - hs * Math.sin(ang - 0.38));
+  ctx.lineTo(x2 - hs * Math.cos(ang + 0.38), y2 - hs * Math.sin(ang + 0.38));
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function badge(ctx, cx, cy, lines, color, fs, alignTop) {
+  fs = fs || 10;
+  ctx.save();
+  ctx.font = `bold ${fs}px "Segoe UI", monospace`;
+  const lh  = fs + 7;
+  const pad = 6;
+  const maxW = Math.max(...lines.map(l => ctx.measureText(l).width));
+  const bw = maxW + pad * 2;
+  const bh = lines.length * lh + pad;
+  const bx = cx - bw / 2;
+  const by = alignTop ? cy + 4 : cy - bh / 2;
+
+  ctx.fillStyle   = CLR.bg + 'F0';
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 1.5;
+  rrect(ctx, bx, by, bw, bh);
+  ctx.fill(); ctx.stroke();
+
+  ctx.fillStyle    = color;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  lines.forEach((line, i) => {
+    ctx.fillText(line, cx, by + pad / 2 + (i + 0.5) * lh);
+  });
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Panel izquierdo — Diagrama vectorial
+// ══════════════════════════════════════════════════════════════════════
+
+// Espacio lógico: x ∈ [-3.5, 3.5], y ∈ [-3.5, 3.0]
+const LX0 = -3.5, LX1 = 3.5, LY0 = -3.5, LY1 = 3.0;
+
+function makePx(W, H, PAD) {
+  const dw = W - PAD.l - PAD.r;
+  const dh = H - PAD.t - PAD.b;
+  const sx  = dw / (LX1 - LX0);
+  const sy  = dh / (LY1 - LY0);
+  const px  = lx => PAD.l + (lx - LX0) * sx;
+  const py  = ly => PAD.t + (LY1 - ly) * sy;
+  return { px, py, sx, sy };
+}
+
+function drawDiagram() {
+  const { cx, cy, R, rAngle, sumMag } = computeSystem(vectors);
+  const n = vectors.length;
+
+  const W = cvD.width, H = cvD.height;
+  ctxD.clearRect(0, 0, W, H);
+  ctxD.fillStyle = CLR.bg;
+  ctxD.fillRect(0, 0, W, H);
+
+  const PAD = { l: 28, r: 22, t: 38, b: 42 };
+  const { px, py, sx, sy } = makePx(W, H, PAD);
+
+  // ── Título ─────────────────────────────────────────────────────────
+  ctxD.save();
+  ctxD.font            = 'bold 13px "Segoe UI", sans-serif';
+  ctxD.fillStyle       = CLR.text;
+  ctxD.textAlign       = 'center';
+  ctxD.textBaseline    = 'middle';
+  ctxD.fillText('Punto de anclaje — Suma vectorial de fuerzas', W / 2, 21);
+  ctxD.restore();
+
+  // ── Grid suave ────────────────────────────────────────────────────
+  ctxD.save();
+  ctxD.strokeStyle = CLR.grid;
+  ctxD.lineWidth   = 0.5;
+  ctxD.globalAlpha = 0.4;
+  for (let gx = Math.ceil(LX0); gx <= Math.floor(LX1); gx++) {
+    ctxD.beginPath(); ctxD.moveTo(px(gx), py(LY0)); ctxD.lineTo(px(gx), py(LY1)); ctxD.stroke();
+  }
+  for (let gy = Math.ceil(LY0); gy <= Math.floor(LY1); gy++) {
+    ctxD.beginPath(); ctxD.moveTo(px(LX0), py(gy)); ctxD.lineTo(px(LX1), py(gy)); ctxD.stroke();
+  }
+  ctxD.restore();
+
+  // Ejes centrales
+  ctxD.save();
+  ctxD.strokeStyle = CLR.grid;
+  ctxD.lineWidth   = 0.8;
+  ctxD.globalAlpha = 0.6;
+  ctxD.beginPath(); ctxD.moveTo(px(LX0), py(0)); ctxD.lineTo(px(LX1), py(0)); ctxD.stroke();
+  ctxD.beginPath(); ctxD.moveTo(px(0), py(LY0)); ctxD.lineTo(px(0), py(LY1)); ctxD.stroke();
+  ctxD.restore();
+
+  // ── Escala visual ─────────────────────────────────────────────────
+  const maxMag = Math.max(...vectors.map(v => v.magnitude));
+  const scale  = 2.5 / Math.max(R, maxMag, 1.5);
+
+  // ── Paralelogramo (solo con 2 vectores) ──────────────────────────
+  if (n === 2) {
+    const rad0 = vectors[0].angle * Math.PI / 180;
+    const rad1 = vectors[1].angle * Math.PI / 180;
+    const dx0  = scale * vectors[0].magnitude * Math.cos(rad0);
+    const dy0  = scale * vectors[0].magnitude * Math.sin(rad0);
+    const dx1  = scale * vectors[1].magnitude * Math.cos(rad1);
+    const dy1  = scale * vectors[1].magnitude * Math.sin(rad1);
+
+    ctxD.save();
+    ctxD.setLineDash([6, 4]);
+    ctxD.lineWidth   = 1.2;
+    ctxD.globalAlpha = 0.4;
+
+    ctxD.strokeStyle = VECTOR_COLORS[1];
+    ctxD.beginPath();
+    ctxD.moveTo(px(dx0), py(dy0));
+    ctxD.lineTo(px(dx0 + dx1), py(dy0 + dy1));
+    ctxD.stroke();
+
+    ctxD.strokeStyle = VECTOR_COLORS[0];
+    ctxD.beginPath();
+    ctxD.moveTo(px(dx1), py(dy1));
+    ctxD.lineTo(px(dx0 + dx1), py(dy0 + dy1));
+    ctxD.stroke();
+
+    ctxD.restore();
+
+    // Arco del ángulo entre F1 y F2
+    const a1 = vectors[0].angle;
+    const a2 = vectors[1].angle;
+    let angleBetween = Math.abs(a1 - a2);
+    if (angleBetween > 180) angleBetween = 360 - angleBetween;
+
+    const arcMin = Math.min(a1, a2) * Math.PI / 180;
+    const arcMax = Math.max(a1, a2) * Math.PI / 180;
+    const arcR   = 0.5 * sx;   // 0.5 unidades lógicas en píxeles
+
+    ctxD.save();
+    ctxD.strokeStyle = CLR.warning;
+    ctxD.lineWidth   = 1.5;
+    ctxD.globalAlpha = 0.7;
+    ctxD.beginPath();
+    // En canvas, el eje Y está invertido: ángulo positivo es horario
+    // Necesitamos invertir el sentido del arco para compensar
+    ctxD.arc(px(0), py(0), arcR, -arcMax, -arcMin);
+    ctxD.stroke();
+    ctxD.restore();
+
+    // Etiqueta del ángulo
+    const midRad  = ((a1 + a2) / 2) * Math.PI / 180;
+    const lblR    = 0.5 * sx + 18;
+    const lblX    = px(0) + lblR * Math.cos(-midRad);
+    const lblY    = py(0) + lblR * Math.sin(-midRad);
+    ctxD.save();
+    ctxD.font            = 'bold 10px "Segoe UI", sans-serif';
+    ctxD.fillStyle       = CLR.warning;
+    ctxD.textAlign       = 'center';
+    ctxD.textBaseline    = 'middle';
+    ctxD.fillText(`${angleBetween.toFixed(0)}°`, lblX, lblY);
+    ctxD.restore();
+  }
+
+  // ── Vectores individuales ─────────────────────────────────────────
+  const dxAll = [], dyAll = [];
+  for (let i = 0; i < n; i++) {
+    const v    = vectors[i];
+    const rad  = v.angle * Math.PI / 180;
+    const dx   = scale * v.magnitude * Math.cos(rad);
+    const dy   = scale * v.magnitude * Math.sin(rad);
+    const col  = VECTOR_COLORS[i];
+    const tipX = px(dx), tipY = py(dy);
+
+    drawArrow(ctxD, px(0), py(0), tipX, tipY, col, 2.5, 14);
+
+    // Etiqueta del vector
+    const lbx0 = dx * 1.22;
+    const lby0 = dy * 1.22;
+    const lbx  = Math.max(-3.1, Math.min(lbx0, 3.1));
+    const lby  = Math.max(-3.1, Math.min(lby0, 2.8));
+    badge(ctxD, px(lbx), py(lby),
+      [`F${i + 1}`, `${v.magnitude.toFixed(2)} kN`],
+      col, 9);
+
+    dxAll.push(dx);
+    dyAll.push(dy);
+  }
+
+  // ── Flecha resultante ─────────────────────────────────────────────
+  const totDx = dxAll.reduce((a, b) => a + b, 0);
+  const totDy = dyAll.reduce((a, b) => a + b, 0);
+
+  if (R > 0.01) {
+    drawArrow(ctxD, px(0), py(0), px(totDx), py(totDy), CLR.warning, 3.5, 18);
+
+    const tx = Math.max(-3.1, Math.min(totDx * 1.15, 3.1));
+    const ty = Math.max(-3.1, Math.min(totDy * 1.15, 2.7));
+    badge(ctxD, px(tx), py(ty), [`R = ${R.toFixed(2)} kN`], CLR.warning, 12);
+  }
+
+  // ── Punto de anclaje (cuadrado + punto central) ───────────────────
+  const ox = px(0), oy = py(0);
+  const sq = 8;
+  ctxD.save();
+  ctxD.fillStyle   = CLR.anchor;
+  ctxD.strokeStyle = 'rgba(255,255,255,0.5)';
+  ctxD.lineWidth   = 1;
+  ctxD.fillRect(ox - sq, oy - sq, sq * 2, sq * 2);
+  ctxD.strokeRect(ox - sq, oy - sq, sq * 2, sq * 2);
+  ctxD.beginPath();
+  ctxD.arc(ox, oy, 4, 0, Math.PI * 2);
+  ctxD.fillStyle = CLR.text;
+  ctxD.fill();
+  ctxD.restore();
+
+  // ── Contador de fuerzas (esquina inferior derecha) ────────────────
+  ctxD.save();
+  ctxD.font            = '11px "Segoe UI", monospace';
+  ctxD.fillStyle       = CLR.primary;
+  ctxD.textAlign       = 'right';
+  ctxD.textBaseline    = 'bottom';
+  ctxD.globalAlpha     = 0.75;
+  ctxD.fillText(`Fuerzas: ${n}/${MAX_VECTORS}`, W - 8, H - 6);
+  ctxD.restore();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Panel derecho — Información del sistema
+// ══════════════════════════════════════════════════════════════════════
+
+function drawInfo() {
+  const { cx, cy, R, rAngle, sumMag, efficiency } = computeSystem(vectors);
+  const n = vectors.length;
+
+  const W = cvI.width, H = cvI.height;
+  ctxI.clearRect(0, 0, W, H);
+  ctxI.fillStyle = CLR.bg;
+  ctxI.fillRect(0, 0, W, H);
+
+  // ── Fondo del panel ───────────────────────────────────────────────
+  ctxI.save();
+  ctxI.fillStyle   = CLR.panel + 'AA';
+  ctxI.strokeStyle = CLR.grid;
+  ctxI.lineWidth   = 1;
+  rrect(ctxI, 10, 10, W - 20, H - 20, 8);
+  ctxI.fill(); ctxI.stroke();
+  ctxI.restore();
+
+  // ── Ayudante de texto ─────────────────────────────────────────────
+  let yPos = 36;
+  const LM = 28;   // margen izquierdo
+
+  function wt(text, color, size, bold, mono) {
+    if (!text) { yPos += size ? size * 0.6 : 8; return; }
+    ctxI.save();
+    const fw = bold ? 'bold' : 'normal';
+    const ff = mono ? '"Courier New", monospace' : '"Segoe UI", sans-serif';
+    ctxI.font            = `${fw} ${size}px ${ff}`;
+    ctxI.fillStyle       = color;
+    ctxI.textAlign       = 'left';
+    ctxI.textBaseline    = 'top';
+    ctxI.fillText(text, LM, yPos);
+    ctxI.restore();
+    yPos += size + 6;
+  }
+
+  function hline(color) {
+    ctxI.save();
+    ctxI.strokeStyle = color || CLR.grid;
+    ctxI.lineWidth   = 0.8;
+    ctxI.globalAlpha = 0.6;
+    ctxI.beginPath();
+    ctxI.moveTo(LM, yPos + 2);
+    ctxI.lineTo(W - LM, yPos + 2);
+    ctxI.stroke();
+    ctxI.restore();
+    yPos += 10;
+  }
+
+  // ── Título ─────────────────────────────────────────────────────────
+  wt('DATOS DEL SISTEMA', CLR.primary, 14, true);
+  yPos += 4;
+
+  // ── Fuerzas individuales ──────────────────────────────────────────
+  for (let i = 0; i < n; i++) {
+    const v   = vectors[i];
+    const col = VECTOR_COLORS[i];
+    const sign = v.angle >= 0 ? '+' : '';
+
+    // Punto de color
+    ctxI.save();
+    ctxI.beginPath();
+    ctxI.arc(LM + 6, yPos + 7, 5, 0, Math.PI * 2);
+    ctxI.fillStyle = col;
+    ctxI.fill();
+    ctxI.restore();
+
+    ctxI.save();
+    ctxI.font            = `bold 11px "Courier New", monospace`;
+    ctxI.fillStyle       = col;
+    ctxI.textAlign       = 'left';
+    ctxI.textBaseline    = 'top';
+    ctxI.fillText(
+      `F${i + 1}:  ${v.magnitude.toFixed(2)} kN  @  ${sign}${v.angle.toFixed(0)}°`,
+      LM + 16, yPos
+    );
+    ctxI.restore();
+    yPos += 20;
+  }
+
+  yPos += 4;
+  hline();
+
+  // ── Resultante ────────────────────────────────────────────────────
+  wt(`Resultante R:   ${R.toFixed(3)} kN`, CLR.warning, 13, true, true);
+  const rSign = rAngle >= 0 ? '+' : '';
+  wt(`Dirección:      ${rSign}${rAngle.toFixed(1)}°`, CLR.warning, 11, false, true);
+  wt(`Suma escalar:   ${sumMag.toFixed(3)} kN`, CLR.text, 11, false, true);
+  wt(`Eficiencia:     ${efficiency.toFixed(1)}%`, CLR.text, 11, false, true);
+
+  // Fórmula de eficiencia
+  ctxI.save();
+  ctxI.font         = `10px "Segoe UI", sans-serif`;
+  ctxI.fillStyle    = CLR.anchor;
+  ctxI.textAlign    = 'left';
+  ctxI.textBaseline = 'top';
+  ctxI.fillText(`(|R| / \u03A3|F\u1D62| = ${R.toFixed(2)} / ${sumMag.toFixed(2)})`, LM, yPos);
+  ctxI.restore();
+  yPos += 20;
+
+  yPos += 4;
+  hline();
+
+  // ── Componentes ───────────────────────────────────────────────────
+  wt('COMPONENTES', CLR.primary, 12, true);
+
+  const rxSign = cx >= 0 ? '+' : '';
+  const rySign = cy >= 0 ? '+' : '';
+  wt(`Rx = \u03A3 Fi\u00B7cos\u03B8i = ${rxSign}${cx.toFixed(3)} kN`, CLR.text, 10, false, true);
+  wt(`Ry = \u03A3 Fi\u00B7sin\u03B8i = ${rySign}${cy.toFixed(3)} kN`, CLR.text, 10, false, true);
+
+  yPos += 4;
+  hline();
+
+  // ── Interpretación de rescate ─────────────────────────────────────
+  wt('INTERPRETACIÓN RESCATE', CLR.danger, 12, true);
+  yPos += 2;
+
+  if (n >= 2) {
+    const spread = maxSpreadAngle(vectors);
+    let statusColor, statusIcon, statusLine1, statusLine2;
+
+    if (spread < 60) {
+      statusColor = CLR.accent;
+      statusIcon  = '\u2713';
+      statusLine1 = `\u00C1ngulo m\u00E1x: ${spread.toFixed(0)}\u00B0`;
+      statusLine2 = 'Fuerzas alineadas, eficiencia alta.';
+    } else if (spread < 120) {
+      statusColor = CLR.warning;
+      statusIcon  = '\u26A0';
+      statusLine1 = `\u00C1ngulo m\u00E1x: ${spread.toFixed(0)}\u00B0`;
+      statusLine2 = 'Eficiencia moderada.';
+    } else {
+      statusColor = CLR.danger;
+      statusIcon  = '\u26A0';
+      statusLine1 = `\u00C1ngulo m\u00E1x: ${spread.toFixed(0)}\u00B0`;
+      statusLine2 = 'Fuerzas divergentes, baja eficiencia.';
+    }
+
+    // Dibujar badge de estado
+    const badgeX = W / 2;
+    const badgeY = yPos + 10;
+    badge(ctxI, badgeX, badgeY, [`${statusIcon} ${statusLine1}`, statusLine2], statusColor, 11, true);
+    yPos += 64;
+
+    // ── Mini barra de eficiencia ────────────────────────────────────
+    const barW  = W - LM * 2 - 20;
+    const barH  = 14;
+    const barX  = LM;
+    const barY  = yPos;
+    const fillW = Math.max(0, Math.min(1, efficiency / 100)) * barW;
+
+    ctxI.save();
+    // Fondo de la barra
+    ctxI.fillStyle   = CLR.grid;
+    ctxI.strokeStyle = CLR.anchor;
+    ctxI.lineWidth   = 0.8;
+    rrect(ctxI, barX, barY, barW, barH, 4);
+    ctxI.fill(); ctxI.stroke();
+
+    // Relleno de la barra
+    if (fillW > 0) {
+      const effColor = efficiency > 85
+        ? CLR.accent
+        : efficiency > 60
+          ? CLR.warning
+          : CLR.danger;
+      ctxI.fillStyle = effColor;
+      rrect(ctxI, barX, barY, fillW, barH, 4);
+      ctxI.fill();
+    }
+
+    // Etiqueta de la barra
+    ctxI.font            = 'bold 9px "Segoe UI", sans-serif';
+    ctxI.fillStyle       = CLR.text;
+    ctxI.textAlign       = 'center';
+    ctxI.textBaseline    = 'middle';
+    ctxI.fillText(`Eficiencia: ${efficiency.toFixed(1)}%`, barX + barW / 2, barY + barH / 2);
+    ctxI.restore();
+    yPos += barH + 10;
+
+  } else {
+    ctxI.save();
+    ctxI.font         = 'italic 10px "Segoe UI", sans-serif';
+    ctxI.fillStyle    = CLR.anchor;
+    ctxI.textAlign    = 'left';
+    ctxI.textBaseline = 'top';
+    ctxI.fillText('(Agregar \u22652 fuerzas para an\u00E1lisis)', LM, yPos);
+    ctxI.restore();
+    yPos += 20;
+  }
+
+  yPos += 4;
+  hline();
+
+  // ── Tabla de vectores (compacta) ──────────────────────────────────
+  if (H - yPos > 60) {
+    wt('TABLA RESUMEN', CLR.primary, 11, true);
+
+    const colX = [LM, LM + 55, LM + 130, LM + 210, LM + 295];
+    const headers = ['Vec', 'Mag (kN)', 'Áng (°)', 'Fx (kN)', 'Fy (kN)'];
+
+    // Cabecera de tabla
+    ctxI.save();
+    ctxI.font            = 'bold 9px "Segoe UI", monospace';
+    ctxI.fillStyle       = CLR.anchor;
+    ctxI.textBaseline    = 'top';
+    headers.forEach((h, hi) => {
+      ctxI.textAlign = hi === 0 ? 'left' : 'right';
+      ctxI.fillText(h, colX[hi], yPos);
+    });
+    ctxI.restore();
+    yPos += 15;
+
+    for (let i = 0; i < n; i++) {
+      const v   = vectors[i];
+      const col = VECTOR_COLORS[i];
+      const rad = v.angle * Math.PI / 180;
+      const fxi = v.magnitude * Math.cos(rad);
+      const fyi = v.magnitude * Math.sin(rad);
+      const fxSign = fxi >= 0 ? '+' : '';
+      const fySign = fyi >= 0 ? '+' : '';
+
+      ctxI.save();
+      ctxI.font            = `bold 9px "Courier New", monospace`;
+      ctxI.fillStyle       = col;
+      ctxI.textBaseline    = 'top';
+
+      const row = [
+        `F${i + 1}`,
+        v.magnitude.toFixed(2),
+        `${v.angle >= 0 ? '+' : ''}${v.angle.toFixed(0)}`,
+        `${fxSign}${fxi.toFixed(3)}`,
+        `${fySign}${fyi.toFixed(3)}`,
+      ];
+      row.forEach((val, vi) => {
+        ctxI.textAlign = vi === 0 ? 'left' : 'right';
+        ctxI.fillText(val, colX[vi], yPos);
+      });
+      ctxI.restore();
+      yPos += 14;
+    }
+
+    // Fila de totales
+    const rxSign = cx >= 0 ? '+' : '';
+    const rySign = cy >= 0 ? '+' : '';
+    yPos += 2;
+    ctxI.save();
+    ctxI.strokeStyle = CLR.anchor;
+    ctxI.lineWidth   = 0.5;
+    ctxI.globalAlpha = 0.4;
+    ctxI.beginPath();
+    ctxI.moveTo(LM, yPos); ctxI.lineTo(W - LM, yPos);
+    ctxI.stroke();
+    ctxI.restore();
+    yPos += 4;
+
+    ctxI.save();
+    ctxI.font         = `bold 9px "Courier New", monospace`;
+    ctxI.fillStyle    = CLR.warning;
+    ctxI.textBaseline = 'top';
+
+    const totRow = ['R', R.toFixed(2), `${rAngle >= 0 ? '+' : ''}${rAngle.toFixed(1)}`,
+                    `${rxSign}${cx.toFixed(3)}`, `${rySign}${cy.toFixed(3)}`];
+    totRow.forEach((val, vi) => {
+      ctxI.textAlign = vi === 0 ? 'left' : 'right';
+      ctxI.fillText(val, colX[vi], yPos);
+    });
+    ctxI.restore();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Gestión dinámica de sliders
+// ══════════════════════════════════════════════════════════════════════
+
+function rebuildSliders() {
+  const n         = vectors.length;
+  const container = document.getElementById('sliderContainer');
+  container.innerHTML = '';
+
+  for (let i = 0; i < n; i++) {
+    const col = VECTOR_COLORS[i];
+    const v   = vectors[i];
+
+    const group = document.createElement('div');
+    group.className = 'vector-group';
+    group.style.borderColor = col + '55';
+
+    // ── Slider de ángulo ──────────────────────────────────────────
+    const rowAng = document.createElement('div');
+    rowAng.className = 'slider-row';
+
+    const lblAng = document.createElement('span');
+    lblAng.className   = 'slider-label';
+    lblAng.style.color = col;
+    lblAng.innerHTML   = `<b>F${i + 1}</b>&nbsp;Ángulo (°)`;
+
+    const slAng = document.createElement('input');
+    slAng.type    = 'range';
+    slAng.min     = -180;
+    slAng.max     = 180;
+    slAng.step    = 1;
+    slAng.value   = v.angle;
+    slAng.style.accentColor = col;
+    slAng.dataset.index = i;
+    slAng.dataset.prop  = 'angle';
+
+    const valAng = document.createElement('span');
+    valAng.className   = 'slider-val';
+    valAng.style.color = col;
+    valAng.textContent = `${v.angle >= 0 ? '+' : ''}${v.angle.toFixed(0)}°`;
+
+    slAng.addEventListener('input', function () {
+      const idx = +this.dataset.index;
+      vectors[idx].angle = +this.value;
+      valAng.textContent = `${+this.value >= 0 ? '+' : ''}${(+this.value).toFixed(0)}°`;
+      redraw();
+    });
+
+    rowAng.appendChild(lblAng);
+    rowAng.appendChild(slAng);
+    rowAng.appendChild(valAng);
+
+    // ── Slider de magnitud ────────────────────────────────────────
+    const rowMag = document.createElement('div');
+    rowMag.className = 'slider-row';
+
+    const lblMag = document.createElement('span');
+    lblMag.className   = 'slider-label';
+    lblMag.style.color = col;
+    lblMag.innerHTML   = `<b>F${i + 1}</b>&nbsp;Magnitud (kN)`;
+
+    const slMag = document.createElement('input');
+    slMag.type    = 'range';
+    slMag.min     = 0.1;
+    slMag.max     = 10.0;
+    slMag.step    = 0.05;
+    slMag.value   = v.magnitude;
+    slMag.style.accentColor = col;
+    slMag.dataset.index = i;
+    slMag.dataset.prop  = 'magnitude';
+
+    const valMag = document.createElement('span');
+    valMag.className   = 'slider-val';
+    valMag.style.color = col;
+    valMag.textContent = `${v.magnitude.toFixed(2)} kN`;
+
+    slMag.addEventListener('input', function () {
+      const idx = +this.dataset.index;
+      vectors[idx].magnitude = +this.value;
+      valMag.textContent     = `${(+this.value).toFixed(2)} kN`;
+      redraw();
+    });
+
+    rowMag.appendChild(lblMag);
+    rowMag.appendChild(slMag);
+    rowMag.appendChild(valMag);
+
+    group.appendChild(rowAng);
+    group.appendChild(rowMag);
+    container.appendChild(group);
+  }
+
+  // Actualizar título y botones
+  document.getElementById('ctrlTitle').textContent =
+    `Controles — ${n} fuerza${n !== 1 ? 's' : ''} activa${n !== 1 ? 's' : ''}`;
+  document.getElementById('btnAdd').disabled = (n >= MAX_VECTORS);
+  document.getElementById('btnRem').disabled = (n <= MIN_VECTORS);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Botones agregar / eliminar
+// ══════════════════════════════════════════════════════════════════════
+
+document.getElementById('btnAdd').addEventListener('click', function () {
+  if (vectors.length < MAX_VECTORS) {
+    vectors.push({ angle: -90, magnitude: 0.78 });
+    rebuildSliders();
+    redraw();
+  }
+});
+
+document.getElementById('btnRem').addEventListener('click', function () {
+  if (vectors.length > MIN_VECTORS) {
+    vectors.pop();
+    rebuildSliders();
+    redraw();
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  Bucle principal
+// ══════════════════════════════════════════════════════════════════════
+
+function redraw() {
+  drawDiagram();
+  drawInfo();
+}
+
+// Inicialización
+rebuildSliders();
+redraw();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,827 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Física del Rescate — Anclaje en V</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0f0f1a;
+      color: #ECEFF1;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 14px 12px 20px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: 1.45rem;
+      color: #00BCD4;
+      text-align: center;
+      margin-bottom: 5px;
+      letter-spacing: 0.4px;
+    }
+
+    .warning-bar {
+      color: #F44336;
+      font-size: 0.82rem;
+      font-style: italic;
+      font-weight: bold;
+      text-align: center;
+      max-width: 1110px;
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+
+    .canvas-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    canvas { display: block; border-radius: 6px; border: 1px solid #2a2a3e; }
+
+    .controls {
+      width: 100%;
+      max-width: 1110px;
+      background: #16213e;
+      border: 1px solid #2a2a3e;
+      border-radius: 8px;
+      padding: 12px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .slider-row {
+      display: grid;
+      grid-template-columns: 200px 1fr 80px;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .slider-label { font-size: 0.88rem; text-align: right; color: #ECEFF1; }
+
+    input[type="range"] { width: 100%; cursor: pointer; height: 4px; }
+    #slAngle { accent-color: #00BCD4; }
+    #slLoad  { accent-color: #FF5722; }
+    #slPhi   { accent-color: #2196F3; }
+
+    .slider-val {
+      font-size: 0.92rem;
+      font-weight: bold;
+      font-variant-numeric: tabular-nums;
+    }
+    #valAngle { color: #00BCD4; }
+    #valLoad  { color: #FF5722; }
+    #valPhi   { color: #2196F3; }
+
+    .footer {
+      margin-top: 10px;
+      font-size: 0.74rem;
+      color: #ECEFF1;
+      opacity: 0.5;
+      font-style: italic;
+      text-align: center;
+      max-width: 1110px;
+      line-height: 1.6;
+    }
+
+  </style>
+</head>
+<body>
+
+
+<h1>FÍSICA DEL RESCATE — Anclaje en V: Ángulo vs Fuerza</h1>
+
+<p class="warning-bar">
+  REGLA DE ORO: θ &lt; 90° y φ &lt; θ/2 &nbsp;│&nbsp;
+  A 120° simétrico, cada brazo soporta el 100% de la carga &nbsp;│&nbsp;
+  Si la carga sale del cono del V, un brazo pierde tensión.
+</p>
+
+<div class="canvas-row">
+  <canvas id="cvDiagram" width="435" height="492"></canvas>
+  <canvas id="cvCurve"   width="655" height="492"></canvas>
+</div>
+
+<div class="controls">
+  <div class="slider-row">
+    <span class="slider-label">Ángulo V &nbsp;<b>θ</b> (°)</span>
+    <input type="range" id="slAngle" min="2" max="175" value="60" step="1">
+    <span class="slider-val" id="valAngle">60°</span>
+  </div>
+  <div class="slider-row">
+    <span class="slider-label">Carga (kg)</span>
+    <input type="range" id="slLoad" min="10" max="300" value="100" step="1">
+    <span class="slider-val" id="valLoad">100 kg</span>
+  </div>
+  <div class="slider-row">
+    <span class="slider-label">Ángulo carga &nbsp;<b>φ</b> (°)</span>
+    <input type="range" id="slPhi" min="-90" max="90" value="0" step="1">
+    <span class="slider-val" id="valPhi">+0°</span>
+  </div>
+</div>
+
+<p class="footer">
+  Caso simétrico (φ=0): F = W / (2·cos θ/2) &nbsp;│&nbsp;
+  Brazo flojo cuando |φ| ≥ θ/2 &nbsp;│&nbsp;
+  φ &gt; 0 → más carga en A₁ (izq.) &nbsp;│&nbsp;
+  φ &lt; 0 → más carga en A₂ (der.)
+</p>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════
+//  Constantes
+// ══════════════════════════════════════════════════════════════════════
+const G = 9.81;
+
+const CLR = {
+  bg:        '#0f0f1a',
+  panel:     '#16213e',
+  primary:   '#00BCD4',
+  secondary: '#FF5722',
+  accent:    '#4CAF50',
+  warning:   '#FFC107',
+  danger:    '#F44336',
+  info:      '#2196F3',
+  text:      '#ECEFF1',
+  grid:      '#2a2a3e',
+  rope:      '#FFA726',
+  anchor:    '#78909C',
+};
+
+const C1 = '#2196F3';   // azul  — brazo izquierdo / T₁
+const C2 = '#4CAF50';   // verde — brazo derecho   / T₂
+
+// ══════════════════════════════════════════════════════════════════════
+//  Canvas y controles
+// ══════════════════════════════════════════════════════════════════════
+const cvD  = document.getElementById('cvDiagram');
+const cvC  = document.getElementById('cvCurve');
+const ctxD = cvD.getContext('2d');
+const ctxC = cvC.getContext('2d');
+
+const slAngle  = document.getElementById('slAngle');
+const slLoad   = document.getElementById('slLoad');
+const slPhi    = document.getElementById('slPhi');
+const valAngle = document.getElementById('valAngle');
+const valLoad  = document.getElementById('valLoad');
+const valPhi   = document.getElementById('valPhi');
+
+// ══════════════════════════════════════════════════════════════════════
+//  Física
+// ══════════════════════════════════════════════════════════════════════
+
+/**
+ * Calcula las tensiones en los dos brazos del anclaje en V.
+ *   T₁ = W · sin(θ/2 + φ) / sin(θ)   — brazo izquierdo
+ *   T₂ = W · sin(θ/2 − φ) / sin(θ)   — brazo derecho
+ */
+function compute(theta_deg, mass, phi_deg) {
+  const W_kN = mass * G / 1000;
+  const theta = theta_deg * Math.PI / 180;
+  const phi   = phi_deg   * Math.PI / 180;
+  const half  = theta / 2;
+  const sinT  = Math.sin(theta);
+
+  let T1, T2;
+  if (Math.abs(sinT) < 0.01) {          // singularidad en θ≈0° ó 180°
+    T1 = T2 = 99 * W_kN;
+  } else {
+    T1 = W_kN * Math.sin(half + phi) / sinT;
+    T2 = W_kN * Math.sin(half - phi) / sinT;
+  }
+
+  const r1 = W_kN > 0 ? T1 / W_kN : 0;
+  const r2 = W_kN > 0 ? T2 / W_kN : 0;
+  return { W_kN, T1, T2, r1, r2 };
+}
+
+function armColor(T, W_kN) {
+  if (T <= 0) return CLR.grid;
+  const ratio = W_kN > 0 ? T / W_kN : 0;
+  if (ratio > 1.0)  return CLR.danger;
+  if (ratio > 0.75) return CLR.warning;
+  return CLR.rope;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Utilidades de dibujo
+// ══════════════════════════════════════════════════════════════════════
+
+function drawArrow(ctx, x1, y1, x2, y2, color, lw = 2.5, hs = 13) {
+  const dx  = x2 - x1, dy = y2 - y1;
+  const ang = Math.atan2(dy, dx);
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle   = color;
+  ctx.lineWidth   = lw;
+  ctx.lineCap     = 'round';
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hs * Math.cos(ang - 0.38), y2 - hs * Math.sin(ang - 0.38));
+  ctx.lineTo(x2 - hs * Math.cos(ang + 0.38), y2 - hs * Math.sin(ang + 0.38));
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function drawDiamond(ctx, x, y, size, color) {
+  ctx.save();
+  ctx.fillStyle   = color;
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+  ctx.lineWidth   = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(x,        y - size);
+  ctx.lineTo(x + size, y);
+  ctx.lineTo(x,        y + size);
+  ctx.lineTo(x - size, y);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+
+/** Rounded rectangle path (no fill/stroke — llamar fill/stroke después). */
+function rrect(ctx, x, y, w, h, r = 5) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y,     x + w, y + r,     r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x,     y + h, x,      y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y,     x + r, y,             r);
+  ctx.closePath();
+}
+
+/**
+ * Dibuja un badge (cuadro redondeado con texto) centrado en (cx, cy).
+ * @param {string[]} lines  - Array de líneas de texto
+ * @param {boolean}  bottom - Si true, el badge cuelga por encima de cy
+ */
+function badge(ctx, cx, cy, lines, color, fs = 10, bottom = false) {
+  ctx.save();
+  ctx.font = `bold ${fs}px "Segoe UI", monospace`;
+  const lh  = fs + 7;
+  const pad = 6;
+  const maxW = Math.max(...lines.map(l => ctx.measureText(l).width));
+  const bw = maxW + pad * 2;
+  const bh = lines.length * lh + pad;
+  const bx = cx - bw / 2;
+  const by = bottom ? cy - bh - 4 : cy - bh / 2;
+
+  ctx.fillStyle   = CLR.bg + 'F0';
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 1.6;
+  rrect(ctx, bx, by, bw, bh);
+  ctx.fill(); ctx.stroke();
+
+  ctx.fillStyle    = color;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  lines.forEach((line, i) => {
+    ctx.fillText(line, cx, by + pad / 2 + (i + 0.5) * lh);
+  });
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Panel izquierdo — Diagrama del anclaje en V
+// ══════════════════════════════════════════════════════════════════════
+
+function drawDiagram(theta_deg, mass, phi_deg) {
+  const { W_kN, T1, T2, r1, r2 } = compute(theta_deg, mass, phi_deg);
+  const col1 = armColor(T1, W_kN);
+  const col2 = armColor(T2, W_kN);
+
+  const W = cvD.width, H = cvD.height;
+  ctxD.clearRect(0, 0, W, H);
+  ctxD.fillStyle = CLR.bg;
+  ctxD.fillRect(0, 0, W, H);
+
+  // ── Espacio lógico → píxeles ──────────────────────────────────────
+  // Espacio lógico: x ∈ [-2.5, 2.5],  y ∈ [-2.9, 1.5]  (y arriba, como Python)
+  const LX0 = -2.5, LX1 = 2.5, LY0 = -2.9, LY1 = 1.5;
+  const PAD = { l: 30, r: 22, t: 38, b: 55 };
+  const dw  = W - PAD.l - PAD.r;
+  const dh  = H - PAD.t - PAD.b;
+  const sx  = dw / (LX1 - LX0);
+  const sy  = dh / (LY1 - LY0);
+  const px  = lx => PAD.l + (lx - LX0) * sx;
+  const py  = ly => PAD.t + (LY1 - ly) * sy;   // y invertida para canvas
+
+  const theta = theta_deg * Math.PI / 180;
+  const phi   = phi_deg   * Math.PI / 180;
+  const half  = theta / 2;
+  const ARM   = 1.8;
+
+  // Puntos clave en espacio lógico
+  const aL  = { x: -ARM * Math.sin(half), y: 0 };
+  const aR  = {  x:  ARM * Math.sin(half), y: 0 };
+  const lpt = { x: 0,                      y: -ARM * Math.cos(half) };
+
+  // ── Título ───────────────────────────────────────────────────────
+  ctxD.save();
+  ctxD.font            = 'bold 13px "Segoe UI", sans-serif';
+  ctxD.fillStyle       = CLR.text;
+  ctxD.textAlign       = 'center';
+  ctxD.textBaseline    = 'middle';
+  ctxD.fillText('Diagrama del Anclaje en V', W / 2, 20);
+  ctxD.restore();
+
+  // ── Pared superior ───────────────────────────────────────────────
+  ctxD.save();
+  ctxD.strokeStyle = CLR.anchor;
+  ctxD.lineWidth   = 3;
+  ctxD.beginPath();
+  ctxD.moveTo(px(-2.3), py(0));
+  ctxD.lineTo(px( 2.3), py(0));
+  ctxD.stroke();
+  // Relleno hatching (pared)
+  ctxD.fillStyle = CLR.anchor + '20';
+  ctxD.fillRect(px(-2.3), py(0.28), px(2.3) - px(-2.3), py(0) - py(0.28));
+  ctxD.strokeStyle = CLR.anchor + '55';
+  ctxD.lineWidth   = 1;
+  for (let xi = -2.3; xi <= 2.3; xi += 0.34) {
+    ctxD.beginPath();
+    ctxD.moveTo(px(xi),        py(0));
+    ctxD.lineTo(px(xi - 0.18), py(0.28));
+    ctxD.stroke();
+  }
+  ctxD.restore();
+
+  // ── Brazos ───────────────────────────────────────────────────────
+  ctxD.save();
+  ctxD.lineWidth   = 3.5;
+  ctxD.lineCap     = 'round';
+  ctxD.strokeStyle = col1;
+  ctxD.beginPath(); ctxD.moveTo(px(aL.x), py(aL.y)); ctxD.lineTo(px(lpt.x), py(lpt.y)); ctxD.stroke();
+  ctxD.strokeStyle = col2;
+  ctxD.beginPath(); ctxD.moveTo(px(aR.x), py(aR.y)); ctxD.lineTo(px(lpt.x), py(lpt.y)); ctxD.stroke();
+  ctxD.restore();
+
+  // ── Línea de referencia vertical φ=0 (punteada) ─────────────────
+  const arrLen = Math.min(W_kN * 0.6, 1.0);
+  ctxD.save();
+  ctxD.strokeStyle = CLR.grid;
+  ctxD.lineWidth   = 1;
+  ctxD.setLineDash([4, 4]);
+  ctxD.beginPath();
+  ctxD.moveTo(px(lpt.x), py(lpt.y));
+  ctxD.lineTo(px(lpt.x), py(lpt.y - arrLen * 1.15));
+  ctxD.stroke();
+  ctxD.restore();
+
+  // ── Flecha de carga al ángulo φ ──────────────────────────────────
+  const arr_dx =  arrLen * Math.sin(phi);     // positivo → derecha
+  const arr_dy = -arrLen * Math.cos(phi);     // negativo → abajo (en lógico, y arriba)
+  const tip    = { x: lpt.x + arr_dx, y: lpt.y + arr_dy };
+  drawArrow(ctxD, px(lpt.x), py(lpt.y), px(tip.x), py(tip.y), CLR.danger, 3, 14);
+
+  // ── Arco de φ (si es significativo) ─────────────────────────────
+  if (Math.abs(phi_deg) > 2) {
+    // Radio del arco en píxeles (calculado a partir de unidades lógicas × escala x)
+    const phiRpx = arrLen * 0.45 * sx;
+    // En canvas: el "abajo" es π/2. El arco va de π/2 a π/2−φ.
+    // Para φ>0 (flecha a la derecha): arco antihorario (anticlockwise=true)
+    // Para φ<0 (flecha a la izquierda): arco horario (anticlockwise=false)
+    ctxD.save();
+    ctxD.strokeStyle = CLR.info;
+    ctxD.lineWidth   = 1.8;
+    ctxD.beginPath();
+    ctxD.arc(px(lpt.x), py(lpt.y), phiRpx, Math.PI / 2, Math.PI / 2 - phi, phi > 0);
+    ctxD.stroke();
+    ctxD.restore();
+
+    // Etiqueta φ — posicionada en el punto medio del arco
+    const midAng  = Math.PI / 2 - phi / 2;
+    const rLblPx  = phiRpx + 14;
+    const lxPhi   = px(lpt.x) + rLblPx * Math.cos(midAng);
+    const lyPhi   = py(lpt.y) + rLblPx * Math.sin(midAng);
+    const phiSign = phi_deg >= 0 ? '+' : '';
+    ctxD.save();
+    ctxD.font            = 'bold 9px "Segoe UI", sans-serif';
+    ctxD.fillStyle       = CLR.info;
+    ctxD.textAlign       = 'center';
+    ctxD.textBaseline    = 'middle';
+    ctxD.fillText(`φ=${phiSign}${phi_deg}°`, lxPhi, lyPhi);
+    ctxD.restore();
+  }
+
+  // ── Arco de θ en el vértice ───────────────────────────────────────
+  // El arco va desde π/2−half hasta π/2+half (zona inferior del vértice),
+  // representando el ángulo de apertura del V
+  const arcRpx = 0.55 * sx;
+  ctxD.save();
+  ctxD.strokeStyle = CLR.warning;
+  ctxD.lineWidth   = 1.5;
+  ctxD.beginPath();
+  ctxD.arc(px(lpt.x), py(lpt.y), arcRpx, Math.PI / 2 - half, Math.PI / 2 + half);
+  ctxD.stroke();
+  ctxD.restore();
+
+  // Etiqueta θ — encima del vértice (entre el vértice y los anclajes)
+  ctxD.save();
+  ctxD.font            = 'bold 12px "Segoe UI", sans-serif';
+  ctxD.fillStyle       = CLR.warning;
+  ctxD.textAlign       = 'center';
+  ctxD.textBaseline    = 'bottom';
+  ctxD.fillText(`θ = ${theta_deg}°`, px(lpt.x), py(lpt.y) - arcRpx - 4);
+  ctxD.restore();
+
+  // ── Puntos de anclaje (diamante) ─────────────────────────────────
+  for (const [pt, lbl, c] of [[aL, 'A₁', C1], [aR, 'A₂', C2]]) {
+    drawDiamond(ctxD, px(pt.x), py(pt.y), 8, c);
+    ctxD.save();
+    ctxD.font            = 'bold 11px "Segoe UI", sans-serif';
+    ctxD.fillStyle       = c;
+    ctxD.textAlign       = 'center';
+    ctxD.textBaseline    = 'bottom';
+    ctxD.fillText(lbl, px(pt.x), py(pt.y) - 11);
+    ctxD.restore();
+  }
+
+  // ── Punto de carga (vértice del V) ───────────────────────────────
+  ctxD.save();
+  ctxD.beginPath();
+  ctxD.arc(px(lpt.x), py(lpt.y), 9, 0, Math.PI * 2);
+  ctxD.fillStyle   = CLR.warning;
+  ctxD.strokeStyle = 'rgba(255,255,255,0.8)';
+  ctxD.lineWidth   = 1.5;
+  ctxD.fill(); ctxD.stroke();
+  ctxD.restore();
+
+  // ── Etiqueta de carga W ───────────────────────────────────────────
+  const lblX = Math.max(-1.9, Math.min(lpt.x + arr_dx * 1.6, 1.9));
+  const lblY = lpt.y + arr_dy * 1.6;
+  badge(ctxD, px(lblX), py(lblY), [`W = ${W_kN.toFixed(2)} kN`, `(${mass} kg)`], CLR.danger, 10);
+
+  // ── Etiquetas de tensión en cada brazo ───────────────────────────
+  for (const [anchor, T, c, sign, lbl] of [
+    [aL, T1, C1, -1, 'T₁'],
+    [aR, T2, C2,  1, 'T₂'],
+  ]) {
+    const mx   = (anchor.x + lpt.x) / 2 + sign * 0.35;
+    const my   = (anchor.y + lpt.y) / 2;
+    const note = T <= 0 ? 'FLOJO' : `${T.toFixed(2)} kN`;
+    badge(ctxD, px(mx), py(my), [`${lbl} = ${note}`], c, 9);
+  }
+
+  // ── Indicador de seguridad ────────────────────────────────────────
+  const slack = T1 <= 0 || T2 <= 0;
+  const maxR  = Math.max(r1, r2);
+  let status, stColor;
+  if (slack)          { status = '⚠ BRAZO FLOJO — SISTEMA INESTABLE'; stColor = CLR.danger;  }
+  else if (maxR > 1)  { status = '✗ PELIGROSO';                        stColor = CLR.danger;  }
+  else if (maxR > 0.75) { status = '⚠ PRECAUCIÓN';                    stColor = CLR.warning; }
+  else                  { status = '✓ SEGURO';                          stColor = CLR.accent;  }
+
+  badge(
+    ctxD, W / 2, H - 20,
+    [status, `T₁: ${(r1 * 100).toFixed(0)}%·W  |  T₂: ${(r2 * 100).toFixed(0)}%·W`],
+    stColor, 11, true
+  );
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Panel derecho — Curva ángulo vs fuerza
+// ══════════════════════════════════════════════════════════════════════
+
+function drawCurve(theta_deg, mass, phi_deg) {
+  const { W_kN, T1, T2, r1, r2 } = compute(theta_deg, mass, phi_deg);
+  const phi     = phi_deg * Math.PI / 180;
+  const phiSign = phi_deg >= 0 ? '+' : '';
+
+  const W = cvC.width, H = cvC.height;
+  ctxC.clearRect(0, 0, W, H);
+  ctxC.fillStyle = CLR.bg;
+  ctxC.fillRect(0, 0, W, H);
+
+  const PAD  = { l: 68, r: 28, t: 52, b: 52 };
+  const cw   = W - PAD.l - PAD.r;
+  const ch   = H - PAD.t - PAD.b;
+  const XMAX = 175;
+  const YMAX = Math.max(Math.min(Math.max(r1, r2) * 1.6, 5.5), 1.5);
+
+  const px = x => PAD.l + (x / XMAX) * cw;
+  const py = y => PAD.t + ch - (y / YMAX) * ch;
+
+  // ── Título ───────────────────────────────────────────────────────
+  ctxC.save();
+  ctxC.font            = 'bold 12px "Segoe UI", monospace';
+  ctxC.fillStyle       = CLR.warning;
+  ctxC.textAlign       = 'center';
+  ctxC.textBaseline    = 'middle';
+  ctxC.fillText('T₁ = W·sin(θ/2+φ)/sin θ          T₂ = W·sin(θ/2−φ)/sin θ', W / 2, 26);
+  ctxC.restore();
+
+  // ── Zonas de fondo ───────────────────────────────────────────────
+  const zones = [
+    [0,    Math.min(0.75, YMAX), CLR.accent  + '18'],
+    [0.75, Math.min(1.0,  YMAX), CLR.warning + '18'],
+    [1.0,  YMAX,                 CLR.danger  + '18'],
+  ];
+  for (const [y0, y1, color] of zones) {
+    if (y1 > y0) {
+      ctxC.fillStyle = color;
+      ctxC.fillRect(px(0), py(y1), cw, py(y0) - py(y1));
+    }
+  }
+
+  // ── Grid ──────────────────────────────────────────────────────────
+  ctxC.save();
+  ctxC.strokeStyle = CLR.grid;
+  ctxC.lineWidth   = 0.5;
+  ctxC.globalAlpha = 0.45;
+  for (let x = 0; x <= XMAX; x += 30) {
+    ctxC.beginPath(); ctxC.moveTo(px(x), py(0)); ctxC.lineTo(px(x), py(YMAX)); ctxC.stroke();
+  }
+  for (let y = 0; y <= YMAX + 0.01; y += 0.5) {
+    ctxC.beginPath(); ctxC.moveTo(px(0), py(y)); ctxC.lineTo(px(XMAX), py(y)); ctxC.stroke();
+  }
+  ctxC.restore();
+
+  // ── Ejes ─────────────────────────────────────────────────────────
+  ctxC.save();
+  ctxC.strokeStyle = CLR.anchor;
+  ctxC.lineWidth   = 1.5;
+  ctxC.beginPath(); ctxC.moveTo(px(0), py(0)); ctxC.lineTo(px(XMAX), py(0)); ctxC.stroke();
+  ctxC.beginPath(); ctxC.moveTo(px(0), py(0)); ctxC.lineTo(px(0), py(YMAX)); ctxC.stroke();
+  ctxC.restore();
+
+  // Ticks + etiquetas X
+  ctxC.save();
+  ctxC.font            = '10px "Segoe UI", sans-serif';
+  ctxC.fillStyle       = CLR.text;
+  ctxC.strokeStyle     = CLR.anchor;
+  ctxC.lineWidth       = 1;
+  ctxC.textAlign       = 'center';
+  ctxC.textBaseline    = 'top';
+  for (let x = 0; x <= XMAX; x += 30) {
+    ctxC.beginPath(); ctxC.moveTo(px(x), py(0)); ctxC.lineTo(px(x), py(0) + 5); ctxC.stroke();
+    ctxC.fillText(`${x}°`, px(x), py(0) + 7);
+  }
+  ctxC.restore();
+
+  // Ticks + etiquetas Y
+  ctxC.save();
+  ctxC.font            = '10px "Segoe UI", sans-serif';
+  ctxC.fillStyle       = CLR.text;
+  ctxC.strokeStyle     = CLR.anchor;
+  ctxC.lineWidth       = 1;
+  ctxC.textAlign       = 'right';
+  ctxC.textBaseline    = 'middle';
+  for (let y = 0; y <= YMAX + 0.01; y += 0.5) {
+    ctxC.beginPath(); ctxC.moveTo(px(0), py(y)); ctxC.lineTo(px(0) - 5, py(y)); ctxC.stroke();
+    ctxC.fillText(y.toFixed(1), px(0) - 8, py(y));
+  }
+  ctxC.restore();
+
+  // Etiquetas de ejes
+  ctxC.save();
+  ctxC.font         = '12px "Segoe UI", sans-serif';
+  ctxC.fillStyle    = CLR.text;
+  ctxC.textAlign    = 'center';
+  ctxC.textBaseline = 'bottom';
+  ctxC.fillText('Ángulo del anclaje en V  θ (grados)', PAD.l + cw / 2, H - 4);
+  ctxC.translate(16, PAD.t + ch / 2);
+  ctxC.rotate(-Math.PI / 2);
+  ctxC.textBaseline = 'top';
+  ctxC.fillText('Fuerza en brazo / Peso total', 0, 0);
+  ctxC.restore();
+
+  // ── Línea horizontal al 100% ─────────────────────────────────────
+  ctxC.save();
+  ctxC.strokeStyle = CLR.danger;
+  ctxC.lineWidth   = 1.5;
+  ctxC.setLineDash([5, 4]);
+  ctxC.globalAlpha = 0.65;
+  ctxC.beginPath();
+  ctxC.moveTo(px(0), py(1.0)); ctxC.lineTo(px(XMAX), py(1.0));
+  ctxC.stroke();
+  ctxC.setLineDash([]);
+  ctxC.globalAlpha = 0.85;
+  ctxC.font            = '9px "Segoe UI", sans-serif';
+  ctxC.fillStyle       = CLR.danger;
+  ctxC.textAlign       = 'left';
+  ctxC.textBaseline    = 'bottom';
+  ctxC.fillText('100% de W  (θ=120°, φ=0°)', px(4), py(1.0) - 2);
+  ctxC.restore();
+
+  // ── Helper: dibujar curva con función fn(a) ───────────────────────
+  function plotCurve(color, lw, dash, fn) {
+    ctxC.save();
+    ctxC.strokeStyle = color;
+    ctxC.lineWidth   = lw;
+    ctxC.setLineDash(dash);
+    ctxC.beginPath();
+    let started = false;
+    for (let a = 2; a <= 175; a += 0.35) {
+      const yv = fn(a);
+      if (!isFinite(yv) || yv < -0.01) { started = false; continue; }
+      const yc = Math.min(Math.max(yv, 0), YMAX);
+      if (!started) { ctxC.moveTo(px(a), py(yc)); started = true; }
+      else           ctxC.lineTo(px(a), py(yc));
+    }
+    ctxC.stroke();
+    ctxC.restore();
+  }
+
+  // Curva simétrica de referencia φ=0 (gris, discontinua)
+  plotCurve(CLR.grid, 1.5, [7, 5], a => {
+    const hr = a * Math.PI / 360;
+    return 1.0 / (2 * Math.cos(hr));
+  });
+
+  // Curvas T₁ y T₂ (o curva simétrica si φ=0)
+  if (Math.abs(phi_deg) > 0) {
+    plotCurve(C1, 2.2, [], a => {
+      const hr   = a * Math.PI / 360;
+      const sinT = Math.max(Math.sin(a * Math.PI / 180), 1e-6);
+      return Math.sin(hr + phi) / sinT;
+    });
+    plotCurve(C2, 2.2, [6, 3], a => {
+      const hr   = a * Math.PI / 360;
+      const sinT = Math.max(Math.sin(a * Math.PI / 180), 1e-6);
+      return Math.sin(hr - phi) / sinT;
+    });
+  } else {
+    plotCurve(CLR.primary, 2.8, [], a => {
+      const hr = a * Math.PI / 360;
+      return 1.0 / (2 * Math.cos(hr));
+    });
+  }
+
+  // ── Puntos de referencia notables (caso simétrico) ────────────────
+  for (const ra of [0, 60, 90, 120, 150]) {
+    const hr = ra * Math.PI / 360;
+    const rv = ra === 0 ? 0.5 : 1.0 / (2 * Math.cos(hr));
+    if (rv > YMAX * 1.05) continue;
+    const ryc = Math.min(rv, YMAX);
+    ctxC.save();
+    ctxC.globalAlpha = 0.7;
+    ctxC.beginPath();
+    ctxC.arc(px(ra), py(ryc), 4.5, 0, Math.PI * 2);
+    ctxC.fillStyle = CLR.text;
+    ctxC.fill();
+    ctxC.font            = '7.5px "Segoe UI", sans-serif';
+    ctxC.fillStyle       = CLR.text;
+    ctxC.textAlign       = 'left';
+    ctxC.textBaseline    = 'bottom';
+    ctxC.fillText(`${ra}°: ${rv.toFixed(2)}W`, px(ra) + 5, py(ryc) - 4);
+    ctxC.restore();
+  }
+
+  // ── Línea vertical del ángulo actual ─────────────────────────────
+  ctxC.save();
+  ctxC.strokeStyle = CLR.warning;
+  ctxC.lineWidth   = 2;
+  ctxC.setLineDash([6, 4]);
+  ctxC.globalAlpha = 0.8;
+  ctxC.beginPath();
+  ctxC.moveTo(px(theta_deg), py(0));
+  ctxC.lineTo(px(theta_deg), py(YMAX));
+  ctxC.stroke();
+  ctxC.restore();
+
+  // ── Marcadores del punto actual ───────────────────────────────────
+  const r1c = Math.min(r1, YMAX);
+  const r2c = Math.min(Math.max(r2, 0), YMAX);
+
+  // T₁ — círculo
+  ctxC.save();
+  ctxC.beginPath();
+  ctxC.arc(px(theta_deg), py(r1c), 8, 0, Math.PI * 2);
+  ctxC.fillStyle   = C1;
+  ctxC.strokeStyle = 'rgba(255,255,255,0.8)';
+  ctxC.lineWidth   = 1.5;
+  ctxC.fill(); ctxC.stroke();
+  ctxC.restore();
+
+  // T₂ — cuadrado
+  ctxC.save();
+  const sq = 7;
+  ctxC.fillStyle   = C2;
+  ctxC.strokeStyle = 'rgba(255,255,255,0.8)';
+  ctxC.lineWidth   = 1.5;
+  ctxC.beginPath();
+  ctxC.rect(px(theta_deg) - sq, py(r2c) - sq, sq * 2, sq * 2);
+  ctxC.fill(); ctxC.stroke();
+  ctxC.restore();
+
+  // ── Cuadro de texto con valores actuales ─────────────────────────
+  const infoLines = [
+    `θ = ${theta_deg}°   φ = ${phiSign}${phi_deg}°`,
+    `T₁ = ${T1.toFixed(2)} kN  (${(r1 * 100).toFixed(0)}% W)`,
+    `T₂ = ${T2.toFixed(2)} kN  (${(r2 * 100).toFixed(0)}% W)`,
+  ];
+  const topR  = Math.max(r1, Math.max(r2, 0));
+  const topRc = Math.min(topR, YMAX);
+
+  ctxC.save();
+  ctxC.font = 'bold 9px "Segoe UI", monospace';
+  const lh   = 15, padB = 7;
+  const maxW = Math.max(...infoLines.map(l => ctxC.measureText(l).width));
+  const bw   = maxW + padB * 2;
+  const bh   = infoLines.length * lh + padB;
+  // Posicionar el cuadro para que no se salga del canvas
+  let infoX = theta_deg < 115 ? px(theta_deg) + 10 : px(theta_deg) - bw - 8;
+  infoX     = Math.max(PAD.l + 2, Math.min(infoX, W - PAD.r - bw - 2));
+  const infoY = Math.max(PAD.t + bh + 4, py(topRc) - 6);
+
+  ctxC.fillStyle   = CLR.bg + 'EC';
+  ctxC.strokeStyle = CLR.warning;
+  ctxC.lineWidth   = 1.5;
+  rrect(ctxC, infoX, infoY - bh, bw, bh, 5);
+  ctxC.fill(); ctxC.stroke();
+  ctxC.fillStyle    = CLR.warning;
+  ctxC.textAlign    = 'left';
+  ctxC.textBaseline = 'top';
+  infoLines.forEach((l, i) => {
+    ctxC.fillText(l, infoX + padB, infoY - bh + padB / 2 + i * lh);
+  });
+  ctxC.restore();
+
+  // ── Etiquetas de zona ─────────────────────────────────────────────
+  ctxC.save();
+  ctxC.font         = 'italic 9px "Segoe UI", sans-serif';
+  ctxC.textAlign    = 'center';
+  ctxC.textBaseline = 'middle';
+  ctxC.globalAlpha  = 0.6;
+  if (0.38 < YMAX) {
+    ctxC.fillStyle = CLR.accent;
+    ctxC.fillText('ZONA SEGURA (< 90°)', px(32), py(0.38));
+  }
+  if (0.82 < YMAX) {
+    ctxC.fillStyle = CLR.warning;
+    ctxC.fillText('PRECAUCIÓN (90°–120°)', px(105), py(0.82));
+  }
+  ctxC.restore();
+
+  // ── Leyenda ───────────────────────────────────────────────────────
+  const legendItems = phi_deg !== 0
+    ? [
+        { color: CLR.grid,    dash: [7, 5], lbl: 'Simétrico φ=0°' },
+        { color: C1,          dash: [],     lbl: `T₁/W  (φ=${phiSign}${phi_deg}°)` },
+        { color: C2,          dash: [6, 3], lbl: `T₂/W  (φ=${phiSign}${phi_deg}°)` },
+      ]
+    : [
+        { color: CLR.grid,    dash: [7, 5], lbl: 'Referencia φ=0°' },
+        { color: CLR.primary, dash: [],     lbl: 'F/W  (φ=0°, simétrico)' },
+      ];
+
+  ctxC.save();
+  ctxC.textBaseline = 'middle';
+  let ly = PAD.t + 6;
+  for (const { color, dash, lbl } of legendItems) {
+    ctxC.strokeStyle = color;
+    ctxC.lineWidth   = 2;
+    ctxC.setLineDash(dash);
+    ctxC.beginPath();
+    ctxC.moveTo(PAD.l + 6, ly + 5); ctxC.lineTo(PAD.l + 28, ly + 5);
+    ctxC.stroke();
+    ctxC.setLineDash([]);
+    ctxC.font        = '8.5px "Segoe UI", sans-serif';
+    ctxC.fillStyle   = CLR.text;
+    ctxC.globalAlpha = 0.85;
+    ctxC.textAlign   = 'left';
+    ctxC.fillText(lbl, PAD.l + 32, ly + 5);
+    ly += 18;
+  }
+  ctxC.restore();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Bucle de actualización
+// ══════════════════════════════════════════════════════════════════════
+
+function update() {
+  const theta = +slAngle.value;
+  const mass  = +slLoad.value;
+  const phi   = +slPhi.value;
+
+  valAngle.textContent = `${theta}°`;
+  valLoad.textContent  = `${mass} kg`;
+  valPhi.textContent   = `${phi >= 0 ? '+' : ''}${phi}°`;
+
+  drawDiagram(theta, mass, phi);
+  drawCurve(theta, mass, phi);
+}
+
+slAngle.addEventListener('input', update);
+slLoad.addEventListener('input',  update);
+slPhi.addEventListener('input',   update);
+
+update();
+</script>
+
+</body>
+</html>
