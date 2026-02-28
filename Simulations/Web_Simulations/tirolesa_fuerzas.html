@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Física del Rescate — Fuerzas en la Tirolesa</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0f0f1a;
+      color: #ECEFF1;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 14px 12px 20px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: 1.45rem;
+      color: #00BCD4;
+      text-align: center;
+      margin-bottom: 5px;
+      letter-spacing: 0.4px;
+    }
+
+    .warning-bar {
+      color: #F44336;
+      font-size: 0.82rem;
+      font-style: italic;
+      font-weight: bold;
+      text-align: center;
+      max-width: 1200px;
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+
+    .main-layout {
+      display: flex;
+      gap: 10px;
+      width: 100%;
+      max-width: 1200px;
+      margin-bottom: 12px;
+    }
+
+    .left-col {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      flex: 1 1 0;
+    }
+
+    .right-col {
+      flex: 0 0 auto;
+    }
+
+    canvas {
+      display: block;
+      border-radius: 6px;
+      border: 1px solid #2a2a3e;
+    }
+
+    .controls {
+      width: 100%;
+      max-width: 1200px;
+      background: #16213e;
+      border: 1px solid #2a2a3e;
+      border-radius: 8px;
+      padding: 12px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+
+    .slider-row {
+      display: grid;
+      grid-template-columns: 210px 1fr 110px;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .slider-label { font-size: 0.88rem; text-align: right; color: #ECEFF1; }
+
+    input[type="range"] { width: 100%; cursor: pointer; height: 4px; }
+    #slSpan { accent-color: #00BCD4; }
+    #slSag  { accent-color: #FF5722; }
+    #slLoad { accent-color: #FFC107; }
+    #slHA   { accent-color: #4CAF50; }
+    #slPos  { accent-color: #FFA726; }
+
+    .slider-val {
+      font-size: 0.92rem;
+      font-weight: bold;
+      font-variant-numeric: tabular-nums;
+    }
+    #valSpan { color: #00BCD4; }
+    #valSag  { color: #FF5722; }
+    #valLoad { color: #FFC107; }
+    #valHA   { color: #4CAF50; }
+    #valPos  { color: #FFA726; }
+
+    .footer {
+      margin-top: 10px;
+      font-size: 0.74rem;
+      color: #ECEFF1;
+      opacity: 0.5;
+      font-style: italic;
+      text-align: center;
+      max-width: 1200px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+<h1>FÍSICA DEL RESCATE — Fuerzas en la Tirolesa</h1>
+
+<p class="warning-bar">
+  Menor flecha = MÁS tensión &nbsp;|&nbsp;
+  Anclaje más alto soporta MAYOR tensión &nbsp;|&nbsp;
+  Carga descentrada &rarr; T_A &ne; T_B
+</p>
+
+<div class="main-layout">
+  <div class="left-col">
+    <canvas id="cvTiro" width="830" height="340"></canvas>
+    <canvas id="cvCurv" width="830" height="190"></canvas>
+  </div>
+  <div class="right-col">
+    <canvas id="cvInfo" width="340" height="540"></canvas>
+  </div>
+</div>
+
+<div class="controls">
+  <div class="slider-row">
+    <span class="slider-label">Vano L (m)</span>
+    <input type="range" id="slSpan" min="5" max="100" value="30" step="1">
+    <span class="slider-val" id="valSpan">30 m</span>
+  </div>
+  <div class="slider-row">
+    <span class="slider-label">Flecha (%)</span>
+    <input type="range" id="slSag" min="0.5" max="20" value="5" step="0.1">
+    <span class="slider-val" id="valSag">5.0 %</span>
+  </div>
+  <div class="slider-row">
+    <span class="slider-label">Carga (kg)</span>
+    <input type="range" id="slLoad" min="10" max="300" value="100" step="1">
+    <span class="slider-val" id="valLoad">100 kg</span>
+  </div>
+  <div class="slider-row">
+    <span class="slider-label">Alt. Anclaje A (m)</span>
+    <input type="range" id="slHA" min="0" max="50" value="0" step="0.5">
+    <span class="slider-val" id="valHA">0.0 m</span>
+  </div>
+  <div class="slider-row">
+    <span class="slider-label">Posición carga (%)</span>
+    <input type="range" id="slPos" min="1" max="99" value="50" step="0.5">
+    <span class="slider-val" id="valPos">50.0 %</span>
+  </div>
+</div>
+
+<p class="footer">
+  Cuerda inextensible: longitud fija definida por la flecha en el centro &nbsp;|&nbsp;
+  Equilibrio estático en P: T_A &ne; T_B cuando h_A &ne; 0 o x &ne; L/2 &nbsp;|&nbsp;
+  &Aacute;ngulo V calculado por producto escalar
+</p>
+
+<script>
+// ======================================================================
+//  Constantes
+// ======================================================================
+const G               = 9.81;
+const NFPA_WORK_LOAD  = 13.5;   // kN
+const ROPE_STATIC_MBS = 30.0;   // kN
+
+const CLR = {
+  bg:        '#0f0f1a',
+  panel:     '#16213e',
+  primary:   '#00BCD4',
+  secondary: '#FF5722',
+  accent:    '#4CAF50',
+  warning:   '#FFC107',
+  danger:    '#F44336',
+  info:      '#2196F3',
+  text:      '#ECEFF1',
+  grid:      '#2a2a3e',
+  rope:      '#FFA726',
+  anchor:    '#78909C',
+};
+
+// ======================================================================
+//  Canvas y controles
+// ======================================================================
+const cvTiro = document.getElementById('cvTiro');
+const cvCurv = document.getElementById('cvCurv');
+const cvInfo = document.getElementById('cvInfo');
+const ctxT   = cvTiro.getContext('2d');
+const ctxC   = cvCurv.getContext('2d');
+const ctxI   = cvInfo.getContext('2d');
+
+const slSpan = document.getElementById('slSpan');
+const slSag  = document.getElementById('slSag');
+const slLoad = document.getElementById('slLoad');
+const slHA   = document.getElementById('slHA');
+const slPos  = document.getElementById('slPos');
+
+const valSpan = document.getElementById('valSpan');
+const valSag  = document.getElementById('valSag');
+const valLoad = document.getElementById('valLoad');
+const valHA   = document.getElementById('valHA');
+const valPos  = document.getElementById('valPos');
+
+// ======================================================================
+//  Física
+// ======================================================================
+
+/**
+ * Longitud de la cuerda cuando la carga está en el centro (L/2)
+ * con flecha d medida verticalmente desde el punto medio de la línea A-B.
+ */
+function ropeLengthForSag(L, hA, hB, d) {
+  const yP  = (hA + hB) / 2.0 - d;
+  const lPA = Math.sqrt((L / 2.0) ** 2 + (yP - hA) ** 2);
+  const lPB = Math.sqrt((L / 2.0) ** 2 + (yP - hB) ** 2);
+  return lPA + lPB;
+}
+
+/**
+ * Bisección (64 iter): encuentra yP para la posición horizontal x
+ * dada la longitud de cuerda fija S.
+ * A medida que yP baja, la longitud aumenta.
+ */
+function solveLoadY(x, L, hA, hB, S) {
+  if (x <= 0.005 * L) return hA;
+  if (x >= 0.995 * L) return hB;
+
+  const f = y =>
+    Math.sqrt(x * x + (y - hA) ** 2) +
+    Math.sqrt((L - x) ** 2 + (y - hB) ** 2);
+
+  const t    = x / L;
+  let yHi    = hA * (1 - t) + hB * t;   // límite superior: sobre la línea A-B
+  let yLo    = yHi - S;                  // límite inferior amplio
+
+  for (let i = 0; i < 64; i++) {
+    const yMid = (yLo + yHi) * 0.5;
+    if (f(yMid) < S) yHi = yMid;
+    else              yLo = yMid;
+  }
+  return (yLo + yHi) * 0.5;
+}
+
+/**
+ * Equilibrio estático en P = (x, yP).
+ * Anclajes A = (0, hA), B = (L, hB).
+ *
+ * Ecuaciones:
+ *   x:  -T_A·x/|PA| + T_B·(L-x)/|PB| = 0
+ *   y:   T_A·(hA-yP)/|PA| + T_B·(hB-yP)/|PB| = W
+ *
+ * Solución:
+ *   T_B = W·|PB| / [(L-x)·(hA-yP)/x + (hB-yP)]
+ *   T_A = T_B·(L-x)·|PA| / (x·|PB|)
+ */
+function computeForces(x, L, hA, hB, yP, W_kN) {
+  x = Math.max(1e-4 * L, Math.min(x, (1 - 1e-4) * L));
+
+  const lPA = Math.sqrt(x * x + (yP - hA) ** 2);
+  const lPB = Math.sqrt((L - x) ** 2 + (yP - hB) ** 2);
+
+  const denom = (L - x) * (hA - yP) / x + (hB - yP);
+  let T_A, T_B;
+  if (Math.abs(denom) < 1e-9 || lPA < 1e-9 || lPB < 1e-9) {
+    T_A = T_B = 999.0;
+  } else {
+    T_B = W_kN * lPB / denom;
+    T_A = T_B * (L - x) * lPA / (x * lPB);
+  }
+
+  // Ángulos bajo la horizontal en cada anclaje (mirando hacia la carga)
+  const alpha_A = Math.atan2(hA - yP, x)       * 180 / Math.PI;
+  const alpha_B = Math.atan2(hB - yP, L - x)   * 180 / Math.PI;
+
+  // Ángulo V en el punto de carga (entre los dos segmentos de cuerda)
+  const uAx = -x / lPA,          uAy = (hA - yP) / lPA;
+  const uBx = (L - x) / lPB,     uBy = (hB - yP) / lPB;
+  const cosV  = Math.max(-1.0, Math.min(1.0, uAx * uBx + uAy * uBy));
+  const vAngle = Math.acos(cosV) * 180 / Math.PI;
+
+  return { T_A, T_B, W: W_kN, yP, lPA, lPB, alpha_A, alpha_B, vAngle };
+}
+
+/** Perfil de tensiones: 60 puntos a lo largo del vano. */
+function tensionProfile(L, hA, hB, S, W_kN) {
+  const N = 60;
+  const pcts = [], tAs = [], tBs = [];
+  for (let i = 0; i < N; i++) {
+    const pct = (i + 0.5) / N;
+    const xi  = pct * L;
+    const yi  = solveLoadY(xi, L, hA, hB, S);
+    const fi  = computeForces(xi, L, hA, hB, yi, W_kN);
+    pcts.push(pct * 100);
+    tAs.push(fi.T_A);
+    tBs.push(fi.T_B);
+  }
+  return { pcts, tAs, tBs };
+}
+
+// ======================================================================
+//  Utilidades de dibujo
+// ======================================================================
+
+function drawArrow(ctx, x1, y1, x2, y2, color, lw = 2.5, hs = 13) {
+  const dx  = x2 - x1, dy = y2 - y1;
+  const ang = Math.atan2(dy, dx);
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle   = color;
+  ctx.lineWidth   = lw;
+  ctx.lineCap     = 'round';
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hs * Math.cos(ang - 0.38), y2 - hs * Math.sin(ang - 0.38));
+  ctx.lineTo(x2 - hs * Math.cos(ang + 0.38), y2 - hs * Math.sin(ang + 0.38));
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+function drawDiamond(ctx, x, y, size, color) {
+  ctx.save();
+  ctx.fillStyle   = color;
+  ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+  ctx.lineWidth   = 1.2;
+  ctx.beginPath();
+  ctx.moveTo(x,        y - size);
+  ctx.lineTo(x + size, y);
+  ctx.lineTo(x,        y + size);
+  ctx.lineTo(x - size, y);
+  ctx.closePath();
+  ctx.fill(); ctx.stroke();
+  ctx.restore();
+}
+
+function rrect(ctx, x, y, w, h, r = 5) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y,     x + w, y + r,     r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x,     y + h, x,      y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y,     x + r, y,             r);
+  ctx.closePath();
+}
+
+// ======================================================================
+//  Panel superior izquierdo — Diagrama de la tirolesa
+// ======================================================================
+
+function drawDiagram(L, hA, d, loadX, yP, f, posPC, W_kN) {
+  const hB     = 0.0;
+  const T_A    = f.T_A;
+  const T_B    = f.T_B;
+  const T_max  = Math.max(T_A, T_B);
+
+  const W = cvTiro.width, H = cvTiro.height;
+  ctxT.clearRect(0, 0, W, H);
+  ctxT.fillStyle = CLR.bg;
+  ctxT.fillRect(0, 0, W, H);
+
+  // Espacio lógico → píxeles
+  const yHi  = Math.max(hA, hB) + Math.max(d * 0.5, 0.5);
+  const yRaw = yP - Math.max(W_kN * 0.4, d * 0.3);
+  const yLo  = Math.min(yRaw, Math.min(hA, hB) - d * 0.3);
+  const span = Math.max(yHi - yLo, 1.0);
+
+  const PAD  = { l: 70, r: 50, t: 52, b: 30 };
+  const dw   = W - PAD.l - PAD.r;
+  const dh   = H - PAD.t - PAD.b;
+
+  const xLo = -L * 0.12, xHi = L * 1.12;
+  const yLoPlot = yLo, yHiPlot = yHi + span * 0.18;
+
+  const scX = dw / (xHi - xLo);
+  const scY = dh / (yHiPlot - yLoPlot);
+  const px  = lx => PAD.l + (lx - xLo) * scX;
+  const py  = ly => H - PAD.b - (ly - yLoPlot) * scY;
+
+  // ── Título ────────────────────────────────────────────────────────
+  ctxT.save();
+  ctxT.font         = 'bold 12px "Segoe UI", sans-serif';
+  ctxT.fillStyle    = CLR.text;
+  ctxT.textAlign    = 'center';
+  ctxT.textBaseline = 'middle';
+  ctxT.fillText(
+    `Diagrama de Fuerzas  —  Posición: ${posPC.toFixed(0)}%  (x = ${loadX.toFixed(1)} m)   |   Ángulo V = ${f.vAngle.toFixed(1)}°`,
+    W / 2, 20
+  );
+  ctxT.restore();
+
+  // ── Línea de referencia A-B (punteada) ───────────────────────────
+  ctxT.save();
+  ctxT.strokeStyle = CLR.grid;
+  ctxT.lineWidth   = 1;
+  ctxT.globalAlpha = 0.5;
+  ctxT.setLineDash([6, 5]);
+  ctxT.beginPath();
+  ctxT.moveTo(px(0), py(hA));
+  ctxT.lineTo(px(L), py(hB));
+  ctxT.stroke();
+  ctxT.setLineDash([]);
+  ctxT.restore();
+
+  // ── Cuerda (dos segmentos rectos) ────────────────────────────────
+  const ropeColor = T_max > 10 ? CLR.danger
+                  : T_max >  5 ? CLR.warning
+                  : CLR.rope;
+
+  ctxT.save();
+  ctxT.strokeStyle = ropeColor;
+  ctxT.lineWidth   = 3;
+  ctxT.lineCap     = 'round';
+  ctxT.beginPath();
+  ctxT.moveTo(px(0),     py(hA));
+  ctxT.lineTo(px(loadX), py(yP));
+  ctxT.lineTo(px(L),     py(hB));
+  ctxT.stroke();
+  ctxT.restore();
+
+  // ── Anclajes (diamante verde) ─────────────────────────────────────
+  const anchors = [[0, hA, 'Anclaje A'], [L, hB, 'Anclaje B']];
+  for (const [ax, ay, lbl] of anchors) {
+    drawDiamond(ctxT, px(ax), py(ay), 10, CLR.accent);
+    ctxT.save();
+    ctxT.font         = 'bold 10px "Segoe UI", sans-serif';
+    ctxT.fillStyle    = CLR.accent;
+    ctxT.textAlign    = 'center';
+    ctxT.textBaseline = 'bottom';
+    ctxT.fillText(lbl, px(ax), py(yHiPlot) + 18);
+    ctxT.restore();
+  }
+
+  // ── Punto de carga ────────────────────────────────────────────────
+  ctxT.save();
+  ctxT.beginPath();
+  ctxT.arc(px(loadX), py(yP), 9, 0, Math.PI * 2);
+  ctxT.fillStyle   = CLR.warning;
+  ctxT.strokeStyle = 'rgba(255,255,255,0.8)';
+  ctxT.lineWidth   = 1.5;
+  ctxT.fill(); ctxT.stroke();
+  ctxT.restore();
+
+  // ── Flecha de peso (vertical hacia abajo) ─────────────────────────
+  const arrowLenW = Math.min(W_kN * 0.4, span * 0.22);
+  const arrowLenWpx = arrowLenW * scY;
+  const wTipX = px(loadX);
+  const wTipY = py(yP) + arrowLenWpx;
+  const lwW   = Math.max(2, Math.min(3.5, W_kN * 0.15));
+  drawArrow(ctxT, px(loadX), py(yP), wTipX, wTipY, CLR.danger, lwW, 12);
+
+  ctxT.save();
+  ctxT.font         = 'bold 10px "Segoe UI", sans-serif';
+  ctxT.fillStyle    = CLR.danger;
+  ctxT.textAlign    = 'left';
+  ctxT.textBaseline = 'middle';
+  ctxT.fillText(`W = ${W_kN.toFixed(2)} kN`, wTipX + 6, py(yP) + arrowLenWpx * 0.5);
+  ctxT.restore();
+
+  // ── Flechas de tensión en anclajes (dirección hacia la carga) ─────
+  for (const [ancX, ancY, T_anc] of [[0, hA, T_A], [L, hB, T_B]]) {
+    const scaleL = Math.max(L * 0.05, Math.min(T_anc * 0.3, L * 0.25));
+    const lwA    = Math.max(1.5, Math.min(T_anc * 0.15, 5.0));
+    const hs     = Math.max(10, Math.min(T_anc * 0.8, 30));
+    const vx     = loadX - ancX;
+    const vy     = yP    - ancY;
+    const nm     = Math.sqrt(vx * vx + vy * vy);
+    if (nm < 1e-6) continue;
+    const nx = vx / nm, ny = vy / nm;
+    // Punta de la flecha en espacio lógico
+    const tipLX = ancX + nx * scaleL;
+    const tipLY = ancY + ny * scaleL;
+    drawArrow(ctxT, px(ancX), py(ancY), px(tipLX), py(tipLY), CLR.info, lwA, hs);
+
+    // Etiqueta a mitad del brazo
+    const midLX = ancX + nx * scaleL * 0.5;
+    const midLY = ancY + ny * scaleL * 0.5;
+    ctxT.save();
+    ctxT.font         = 'bold 10px "Segoe UI", sans-serif';
+    ctxT.fillStyle    = CLR.info;
+    ctxT.textAlign    = 'center';
+    ctxT.textBaseline = 'bottom';
+    ctxT.fillText(`T = ${T_anc.toFixed(1)} kN`, px(midLX), py(midLY) - 4);
+    ctxT.restore();
+  }
+
+  // ── Indicador de sag local ────────────────────────────────────────
+  // Línea desde la línea A-B hasta el punto de carga
+  const yLineHere = hA + (hB - hA) * loadX / L;
+  ctxT.save();
+  ctxT.strokeStyle = CLR.warning;
+  ctxT.lineWidth   = 1.5;
+  ctxT.globalAlpha = 0.75;
+  ctxT.setLineDash([5, 4]);
+  ctxT.beginPath();
+  ctxT.moveTo(px(loadX), py(yLineHere));
+  ctxT.lineTo(px(loadX), py(yP));
+  ctxT.stroke();
+  ctxT.setLineDash([]);
+  ctxT.restore();
+
+  ctxT.save();
+  ctxT.font         = '9px "Segoe UI", sans-serif';
+  ctxT.fillStyle    = CLR.warning;
+  ctxT.textAlign    = 'left';
+  ctxT.textBaseline = 'middle';
+  ctxT.fillText(
+    `d = ${(yLineHere - yP).toFixed(1)} m`,
+    px(loadX) + 5,
+    (py(yLineHere) + py(yP)) / 2
+  );
+  ctxT.restore();
+}
+
+// ======================================================================
+//  Panel inferior izquierdo — Curva T_A y T_B vs posición
+// ======================================================================
+
+function drawCurve(pcts, tAs, tBs, posPC, T_A_cur, T_B_cur) {
+  const W = cvCurv.width, H = cvCurv.height;
+  ctxC.clearRect(0, 0, W, H);
+  ctxC.fillStyle = CLR.bg;
+  ctxC.fillRect(0, 0, W, H);
+
+  const allT  = [...tAs, ...tBs];
+  const maxTc = Math.min(Math.max(Math.max(...allT), NFPA_WORK_LOAD * 1.1, 5.0), 80.0);
+
+  const PAD = { l: 56, r: 22, t: 28, b: 36 };
+  const cw  = W - PAD.l - PAD.r;
+  const ch  = H - PAD.t - PAD.b;
+
+  const px = x => PAD.l + (x / 100) * cw;
+  const py = y => PAD.t + ch - (y / (maxTc * 1.1)) * ch;
+
+  // ── Zonas de fondo ────────────────────────────────────────────────
+  const zones = [
+    [0,               NFPA_WORK_LOAD,                CLR.accent  + '18'],
+    [NFPA_WORK_LOAD,  ROPE_STATIC_MBS,               CLR.warning + '18'],
+    [ROPE_STATIC_MBS, maxTc * 1.1,                   CLR.danger  + '18'],
+  ];
+  for (const [y0, y1, color] of zones) {
+    const cy0 = Math.max(0, y0);
+    const cy1 = Math.min(maxTc * 1.1, y1);
+    if (cy1 > cy0) {
+      ctxC.fillStyle = color;
+      ctxC.fillRect(px(0), py(cy1), cw, py(cy0) - py(cy1));
+    }
+  }
+
+  // ── Grid ──────────────────────────────────────────────────────────
+  ctxC.save();
+  ctxC.strokeStyle = CLR.grid;
+  ctxC.lineWidth   = 0.5;
+  ctxC.globalAlpha = 0.4;
+  for (let x = 0; x <= 100; x += 10) {
+    ctxC.beginPath(); ctxC.moveTo(px(x), py(0)); ctxC.lineTo(px(x), py(maxTc * 1.1)); ctxC.stroke();
+  }
+  const yStep = maxTc > 30 ? 10 : maxTc > 15 ? 5 : 2;
+  for (let y = 0; y <= maxTc * 1.1 + 0.1; y += yStep) {
+    ctxC.beginPath(); ctxC.moveTo(px(0), py(y)); ctxC.lineTo(px(100), py(y)); ctxC.stroke();
+  }
+  ctxC.restore();
+
+  // ── Ejes ──────────────────────────────────────────────────────────
+  ctxC.save();
+  ctxC.strokeStyle = CLR.anchor;
+  ctxC.lineWidth   = 1.5;
+  ctxC.beginPath(); ctxC.moveTo(px(0), py(0)); ctxC.lineTo(px(100), py(0)); ctxC.stroke();
+  ctxC.beginPath(); ctxC.moveTo(px(0), py(0)); ctxC.lineTo(px(0), py(maxTc * 1.1)); ctxC.stroke();
+  ctxC.restore();
+
+  // Ticks X
+  ctxC.save();
+  ctxC.font         = '9px "Segoe UI", sans-serif';
+  ctxC.fillStyle    = CLR.text;
+  ctxC.strokeStyle  = CLR.anchor;
+  ctxC.lineWidth    = 1;
+  ctxC.textAlign    = 'center';
+  ctxC.textBaseline = 'top';
+  for (let x = 0; x <= 100; x += 10) {
+    ctxC.beginPath(); ctxC.moveTo(px(x), py(0)); ctxC.lineTo(px(x), py(0) + 4); ctxC.stroke();
+    ctxC.fillText(`${x}%`, px(x), py(0) + 6);
+  }
+  ctxC.restore();
+
+  // Ticks Y
+  ctxC.save();
+  ctxC.font         = '9px "Segoe UI", sans-serif';
+  ctxC.fillStyle    = CLR.text;
+  ctxC.strokeStyle  = CLR.anchor;
+  ctxC.lineWidth    = 1;
+  ctxC.textAlign    = 'right';
+  ctxC.textBaseline = 'middle';
+  for (let y = 0; y <= maxTc * 1.1 + 0.1; y += yStep) {
+    ctxC.beginPath(); ctxC.moveTo(px(0), py(y)); ctxC.lineTo(px(0) - 4, py(y)); ctxC.stroke();
+    ctxC.fillText(y.toFixed(0), px(0) - 6, py(y));
+  }
+  ctxC.restore();
+
+  // Etiquetas de ejes
+  ctxC.save();
+  ctxC.font         = '10px "Segoe UI", sans-serif';
+  ctxC.fillStyle    = CLR.text;
+  ctxC.textAlign    = 'center';
+  ctxC.textBaseline = 'bottom';
+  ctxC.fillText('Posición en el vano (%)', PAD.l + cw / 2, H - 2);
+  ctxC.translate(13, PAD.t + ch / 2);
+  ctxC.rotate(-Math.PI / 2);
+  ctxC.textBaseline = 'top';
+  ctxC.fillText('Tensión (kN)', 0, 0);
+  ctxC.restore();
+
+  // ── Líneas NFPA y MBS ─────────────────────────────────────────────
+  for (const [yVal, label, dash, alpha] of [
+    [NFPA_WORK_LOAD,  'NFPA', [5, 4], 0.7],
+    [ROPE_STATIC_MBS, 'MBS',  [8, 5], 0.5],
+  ]) {
+    if (yVal > maxTc * 1.1) continue;
+    ctxC.save();
+    ctxC.strokeStyle = CLR.danger;
+    ctxC.lineWidth   = 1;
+    ctxC.globalAlpha = alpha;
+    ctxC.setLineDash(dash);
+    ctxC.beginPath(); ctxC.moveTo(px(0), py(yVal)); ctxC.lineTo(px(100), py(yVal)); ctxC.stroke();
+    ctxC.setLineDash([]);
+    ctxC.font         = '7px "Segoe UI", sans-serif';
+    ctxC.fillStyle    = CLR.danger;
+    ctxC.textAlign    = 'right';
+    ctxC.textBaseline = 'bottom';
+    ctxC.fillText(label, px(99), py(yVal) - 1);
+    ctxC.restore();
+  }
+
+  // ── Curva T_A ─────────────────────────────────────────────────────
+  ctxC.save();
+  ctxC.strokeStyle = CLR.primary;
+  ctxC.lineWidth   = 2.5;
+  ctxC.lineCap     = 'round';
+  ctxC.beginPath();
+  for (let i = 0; i < pcts.length; i++) {
+    const yv = Math.min(tAs[i], maxTc * 1.1);
+    if (i === 0) ctxC.moveTo(px(pcts[i]), py(yv));
+    else          ctxC.lineTo(px(pcts[i]), py(yv));
+  }
+  ctxC.stroke();
+  ctxC.restore();
+
+  // ── Curva T_B ─────────────────────────────────────────────────────
+  ctxC.save();
+  ctxC.strokeStyle = CLR.info;
+  ctxC.lineWidth   = 2.0;
+  ctxC.setLineDash([7, 4]);
+  ctxC.lineCap     = 'round';
+  ctxC.beginPath();
+  for (let i = 0; i < pcts.length; i++) {
+    const yv = Math.min(tBs[i], maxTc * 1.1);
+    if (i === 0) ctxC.moveTo(px(pcts[i]), py(yv));
+    else          ctxC.lineTo(px(pcts[i]), py(yv));
+  }
+  ctxC.stroke();
+  ctxC.setLineDash([]);
+  ctxC.restore();
+
+  // ── Marcador de posición actual (línea vertical + puntos) ─────────
+  ctxC.save();
+  ctxC.strokeStyle = CLR.warning;
+  ctxC.lineWidth   = 1.5;
+  ctxC.globalAlpha = 0.75;
+  ctxC.setLineDash([6, 4]);
+  ctxC.beginPath(); ctxC.moveTo(px(posPC), py(0)); ctxC.lineTo(px(posPC), py(maxTc * 1.1)); ctxC.stroke();
+  ctxC.setLineDash([]);
+  ctxC.restore();
+
+  // Punto T_A actual (círculo)
+  const yAc = Math.min(T_A_cur, maxTc * 1.1);
+  ctxC.save();
+  ctxC.beginPath();
+  ctxC.arc(px(posPC), py(yAc), 7, 0, Math.PI * 2);
+  ctxC.fillStyle   = CLR.primary;
+  ctxC.strokeStyle = 'rgba(255,255,255,0.8)';
+  ctxC.lineWidth   = 1.5;
+  ctxC.fill(); ctxC.stroke();
+  ctxC.restore();
+
+  // Punto T_B actual (cuadrado)
+  const yBc = Math.min(T_B_cur, maxTc * 1.1);
+  const sq  = 6;
+  ctxC.save();
+  ctxC.fillStyle   = CLR.info;
+  ctxC.strokeStyle = 'rgba(255,255,255,0.8)';
+  ctxC.lineWidth   = 1.5;
+  ctxC.beginPath();
+  ctxC.rect(px(posPC) - sq, py(yBc) - sq, sq * 2, sq * 2);
+  ctxC.fill(); ctxC.stroke();
+  ctxC.restore();
+
+  // ── Leyenda ───────────────────────────────────────────────────────
+  const legendItems = [
+    { color: CLR.primary, dash: [],     lbl: 'T_A (anclaje A)' },
+    { color: CLR.info,    dash: [7, 4], lbl: 'T_B (anclaje B)' },
+  ];
+  ctxC.save();
+  ctxC.textBaseline = 'middle';
+  let ly = PAD.t + 5;
+  for (const { color, dash, lbl } of legendItems) {
+    ctxC.strokeStyle = color;
+    ctxC.lineWidth   = 2;
+    ctxC.setLineDash(dash);
+    ctxC.beginPath(); ctxC.moveTo(PAD.l + 4, ly + 5); ctxC.lineTo(PAD.l + 24, ly + 5); ctxC.stroke();
+    ctxC.setLineDash([]);
+    ctxC.font      = '8.5px "Segoe UI", sans-serif';
+    ctxC.fillStyle = CLR.text;
+    ctxC.textAlign = 'left';
+    ctxC.fillText(lbl, PAD.l + 28, ly + 5);
+    ly += 16;
+  }
+  ctxC.restore();
+}
+
+// ======================================================================
+//  Panel derecho — Información monospace
+// ======================================================================
+
+function drawInfo(L, sagPct, d, mass, W_kN, hA, posPC, loadX, f, refTA) {
+  const T_A   = f.T_A;
+  const T_B   = f.T_B;
+  const T_max = Math.max(T_A, T_B);
+
+  const W = cvInfo.width, H = cvInfo.height;
+  ctxI.clearRect(0, 0, W, H);
+  ctxI.fillStyle = CLR.bg;
+  ctxI.fillRect(0, 0, W, H);
+
+  // Fondo de panel
+  ctxI.fillStyle = CLR.panel;
+  rrect(ctxI, 4, 4, W - 8, H - 8, 8);
+  ctxI.fill();
+  ctxI.strokeStyle = '#2a2a3e';
+  ctxI.lineWidth   = 1;
+  ctxI.stroke();
+
+  // Estado de seguridad
+  let statusLine, statusColor;
+  let fsLines = [];
+  if (T_max > ROPE_STATIC_MBS) {
+    statusLine  = '  SOBREPASA ROTURA';
+    statusColor = CLR.danger;
+  } else if (T_max > NFPA_WORK_LOAD) {
+    statusLine  = '  SUPERA CARGA TRABAJO';
+    statusColor = CLR.warning;
+    fsLines     = [`  Riesgo elevado.`];
+  } else {
+    statusLine  = '  DENTRO DE LIMITES';
+    statusColor = CLR.accent;
+    fsLines     = [
+      `  F.S. A: ${(ROPE_STATIC_MBS / T_A).toFixed(1)}:1`,
+      `  F.S. B: ${(ROPE_STATIC_MBS / T_B).toFixed(1)}:1`,
+    ];
+  }
+
+  // Símbolo de estado
+  const statusSym = T_max > ROPE_STATIC_MBS ? '[X]'
+                  : T_max > NFPA_WORK_LOAD   ? '[!]'
+                  : '[OK]';
+
+  // Tabla de líneas a dibujar
+  const SEP = '─'.repeat(30);
+  const lines = [
+    { txt: 'DATOS DEL SISTEMA',              color: CLR.primary,  size: 13, bold: true  },
+    { txt: '',                               color: '',           size: 6,  bold: false },
+    { txt: `Vano:         ${L.toFixed(0)} m`,                color: CLR.text,     size: 11, bold: false },
+    { txt: `Flecha:       ${d.toFixed(2)} m (${sagPct.toFixed(1)}%)`, color: CLR.warning,  size: 11, bold: false },
+    { txt: `Carga:        ${mass.toFixed(0)} kg (${W_kN.toFixed(2)} kN)`, color: CLR.danger,   size: 11, bold: false },
+    { txt: `Alt. A:       ${hA.toFixed(1)} m`,              color: CLR.accent,   size: 10, bold: false },
+    { txt: `Alt. B:       0.0 m (fijo)`,     color: CLR.anchor,   size: 10, bold: false },
+    { txt: `Posicion:     ${posPC.toFixed(0)}%  (${loadX.toFixed(1)} m)`, color: CLR.text,     size: 10, bold: false },
+    { txt: '',                               color: '',           size: 4,  bold: false },
+    { txt: `Angulo A:     ${f.alpha_A.toFixed(1) + String.fromCharCode(176)}`,   color: CLR.text,     size: 10, bold: false },
+    { txt: `Angulo B:     ${f.alpha_B.toFixed(1) + String.fromCharCode(176)}`,   color: CLR.text,     size: 10, bold: false },
+    { txt: `Angulo V:     ${f.vAngle.toFixed(1) + String.fromCharCode(176)}`,    color: CLR.warning,  size: 11, bold: true  },
+    { txt: '',                               color: '',           size: 5,  bold: false },
+    { txt: SEP,                              color: CLR.grid,     size: 8,  bold: false },
+    { txt: '',                               color: '',           size: 4,  bold: false },
+    { txt: 'TENSIONES:',                     color: CLR.warning,  size: 12, bold: true  },
+    { txt: `T_A = ${T_A.toFixed(2)} kN  (${(T_A / W_kN).toFixed(1)}xW)`, color: CLR.primary,  size: 12, bold: true  },
+    { txt: `T_B = ${T_B.toFixed(2)} kN  (${(T_B / W_kN).toFixed(1)}xW)`, color: CLR.info,     size: 12, bold: true  },
+    { txt: '',                               color: '',           size: 4,  bold: false },
+    { txt: SEP,                              color: CLR.grid,     size: 8,  bold: false },
+    { txt: '',                               color: '',           size: 4,  bold: false },
+    { txt: `${statusSym}${statusLine}`,      color: statusColor,  size: 12, bold: true  },
+    ...fsLines.map(l => ({ txt: l, color: statusColor, size: 10, bold: false })),
+    { txt: '',                               color: '',           size: 5,  bold: false },
+    { txt: SEP,                              color: CLR.grid,     size: 8,  bold: false },
+    { txt: `REF. T_A@50% por flecha:`,       color: CLR.text,     size: 10, bold: true  },
+    { txt: ` 2% -> ${refTA[0].toFixed(1)} kN`, color: CLR.danger,  size: 10, bold: false },
+    { txt: ` 5% -> ${refTA[1].toFixed(1)} kN`, color: CLR.warning, size: 10, bold: false },
+    { txt: `10% -> ${refTA[2].toFixed(1)} kN`, color: CLR.accent,  size: 10, bold: false },
+  ];
+
+  const PAD_X = 12;
+  let yPos    = 18;
+
+  for (const { txt, color, size, bold } of lines) {
+    if (!txt) {
+      yPos += size;
+      continue;
+    }
+    ctxI.save();
+    ctxI.font         = `${bold ? 'bold ' : ''}${size}px "Courier New", monospace`;
+    ctxI.fillStyle    = color || CLR.text;
+    ctxI.textAlign    = 'left';
+    ctxI.textBaseline = 'top';
+    ctxI.fillText(txt, PAD_X, yPos);
+    ctxI.restore();
+    yPos += size >= 12 ? size + 8 : size + 6;
+  }
+}
+
+// ======================================================================
+//  Función de referencia T_A@50%
+// ======================================================================
+function tRef(L, hA, W_kN, sagFrac) {
+  const d2 = L * sagFrac;
+  const S2 = ropeLengthForSag(L, hA, 0, d2);
+  const y2 = solveLoadY(L / 2, L, hA, 0, S2);
+  return computeForces(L / 2, L, hA, 0, y2, W_kN).T_A;
+}
+
+// ======================================================================
+//  Bucle de actualización
+// ======================================================================
+function update() {
+  const L       = +slSpan.value;
+  const sagPct  = +slSag.value;
+  const mass    = +slLoad.value;
+  const hA      = +slHA.value;
+  const hB      = 0.0;
+  const posPC   = +slPos.value;
+
+  // Actualizar displays
+  valSpan.textContent = `${L} m`;
+  valSag.textContent  = `${sagPct.toFixed(1)} %`;
+  valLoad.textContent = `${mass} kg`;
+  valHA.textContent   = `${hA.toFixed(1)} m`;
+  valPos.textContent  = `${posPC.toFixed(1)} %`;
+
+  const W_kN  = mass * G / 1000.0;
+  const d     = L * sagPct / 100.0;
+
+  // Longitud fija de la cuerda
+  const S     = ropeLengthForSag(L, hA, hB, d);
+
+  // Posición y altura actual de la carga
+  const loadX = posPC / 100.0 * L;
+  const yP    = solveLoadY(loadX, L, hA, hB, S);
+
+  // Fuerzas en la posición actual
+  const f     = computeForces(loadX, L, hA, hB, yP, W_kN);
+
+  // Perfil de tensiones
+  const { pcts, tAs, tBs } = tensionProfile(L, hA, hB, S, W_kN);
+
+  // Valores de referencia
+  const refTA = [
+    tRef(L, hA, W_kN, 0.02),
+    tRef(L, hA, W_kN, 0.05),
+    tRef(L, hA, W_kN, 0.10),
+  ];
+
+  // Dibujar los tres paneles
+  drawDiagram(L, hA, d, loadX, yP, f, posPC, W_kN);
+  drawCurve(pcts, tAs, tBs, posPC, f.T_A, f.T_B);
+  drawInfo(L, sagPct, d, mass, W_kN, hA, posPC, loadX, f, refTA);
+}
+
+// Escuchar eventos
+for (const sl of [slSpan, slSag, slLoad, slHA, slPos]) {
+  sl.addEventListener('input', update);
+}
+
+// Primer render
+update();
+</script>
+</body>
+</html>

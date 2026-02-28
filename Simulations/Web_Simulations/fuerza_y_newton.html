@@ -1,0 +1,1254 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Física del Rescate — ¿Qué es un Newton?</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0f0f1a;
+      color: #ECEFF1;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 14px 12px 20px;
+      min-height: 100vh;
+    }
+
+    h1 {
+      font-size: 1.45rem;
+      color: #00BCD4;
+      text-align: center;
+      margin-bottom: 4px;
+      letter-spacing: 0.4px;
+    }
+
+    .subtitle {
+      font-size: 0.9rem;
+      color: #FFC107;
+      font-style: italic;
+      text-align: center;
+      margin-bottom: 12px;
+    }
+
+    .canvas-row {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 12px;
+    }
+
+    canvas { display: block; border-radius: 6px; border: 1px solid #2a2a3e; }
+
+    .controls {
+      width: 100%;
+      max-width: 1110px;
+      background: #16213e;
+      border: 1px solid #2a2a3e;
+      border-radius: 8px;
+      padding: 12px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .mode-row {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding-bottom: 6px;
+      border-bottom: 1px solid #2a2a3e;
+    }
+
+    .mode-label {
+      font-size: 0.85rem;
+      color: #ECEFF1;
+      opacity: 0.75;
+    }
+
+    .mode-btn {
+      padding: 5px 16px;
+      border-radius: 5px;
+      border: 1.5px solid #2a2a3e;
+      background: #0f0f1a;
+      color: #ECEFF1;
+      font-size: 0.85rem;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s, color 0.15s;
+    }
+
+    .mode-btn.active {
+      background: #00BCD4;
+      border-color: #00BCD4;
+      color: #0f0f1a;
+      font-weight: bold;
+    }
+
+    .slider-row {
+      display: grid;
+      grid-template-columns: 200px 1fr 95px;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .slider-label { font-size: 0.88rem; text-align: right; color: #ECEFF1; }
+
+    input[type="range"] { width: 100%; cursor: pointer; height: 4px; }
+    #slMass   { accent-color: #00BCD4; }
+    #slHeight { accent-color: #FF5722; }
+    #slTime   { accent-color: #F44336; }
+
+    .slider-val {
+      font-size: 0.92rem;
+      font-weight: bold;
+      font-variant-numeric: tabular-nums;
+    }
+    #valMass   { color: #00BCD4; }
+    #valHeight { color: #FF5722; }
+    #valTime   { color: #F44336; }
+
+    .time-hint {
+      font-size: 0.72rem;
+      color: #F44336;
+      font-style: italic;
+      opacity: 0.6;
+      grid-column: 3;
+      text-align: left;
+    }
+
+    .footer {
+      margin-top: 10px;
+      font-size: 0.74rem;
+      color: #ECEFF1;
+      opacity: 0.5;
+      font-style: italic;
+      text-align: center;
+      max-width: 1110px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+<h1>FÍSICA DEL RESCATE — ¿Qué es un Newton?</h1>
+<p class="subtitle">F = m · a &nbsp;→&nbsp; 1 N = 1 kg · 1 m/s² &nbsp;→&nbsp; Peso = m · g</p>
+
+<div class="canvas-row">
+  <canvas id="cvFall"  width="340" height="530"></canvas>
+  <canvas id="cvUnits" width="340" height="530"></canvas>
+  <canvas id="cvBar"   width="410" height="530"></canvas>
+</div>
+
+<div class="controls">
+  <div class="mode-row">
+    <span class="mode-label">Modo:</span>
+    <button class="mode-btn active" id="btnFree"  onclick="setMode('free')">Caída libre</button>
+    <button class="mode-btn"        id="btnBrake" onclick="setMode('brake')">Frenado (impacto)</button>
+  </div>
+
+  <div class="slider-row">
+    <span class="slider-label">Masa (kg)</span>
+    <input type="range" id="slMass" min="1" max="200" value="70" step="1">
+    <span class="slider-val" id="valMass">70 kg</span>
+  </div>
+
+  <div class="slider-row">
+    <span class="slider-label">Altura de caída (m)</span>
+    <input type="range" id="slHeight" min="0" max="20" value="0" step="0.5">
+    <span class="slider-val" id="valHeight">0.0 m</span>
+  </div>
+
+  <div class="slider-row">
+    <span class="slider-label">Tiempo de frenado (s)</span>
+    <input type="range" id="slTime" min="0.01" max="1.0" value="0.5" step="0.01">
+    <span class="slider-val" id="valTime">0.50 s</span>
+  </div>
+  <div style="display:grid;grid-template-columns:200px 1fr 95px;gap:10px;">
+    <span></span><span></span>
+    <span class="time-hint">solo en modo Frenado</span>
+  </div>
+</div>
+
+<p class="footer">
+  1 N ≈ peso de una manzana pequeña &nbsp;│&nbsp;
+  1 kN = 1 000 N ≈ 102 kg &nbsp;│&nbsp;
+  En rescate técnico trabajamos en kilo-Newtons (kN) &nbsp;│&nbsp;
+  NFPA 1983: carga de trabajo 13.5 kN &nbsp;│&nbsp;
+  Rotura cuerda estática 11 mm: 30 kN
+</p>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════
+//  Constantes globales
+// ══════════════════════════════════════════════════════════════════════
+const G              = 9.81;
+const NFPA_WORK_LOAD = 13.5;   // kN
+const ROPE_MBS       = 30.0;   // kN
+
+const CLR = {
+  bg:        '#0f0f1a',
+  panel:     '#16213e',
+  primary:   '#00BCD4',
+  secondary: '#FF5722',
+  accent:    '#4CAF50',
+  warning:   '#FFC107',
+  danger:    '#F44336',
+  info:      '#2196F3',
+  text:      '#ECEFF1',
+  grid:      '#2a2a3e',
+  rope:      '#FFA726',
+  anchor:    '#78909C',
+};
+
+// Objetos de referencia para el panel de N vs kN
+const REF_OBJECTS = [
+  { mass: 0.102, label: 'Manzana ≈ 1 N',       color: '#4CAF50' },
+  { mass: 1.0,   label: 'Libro 1 kg ≈ 10 N',   color: '#2196F3' },
+  { mass: 10.0,  label: 'Mochila 10 kg ≈ 98 N', color: '#9C27B0' },
+  { mass: 70.0,  label: 'Persona 70 kg ≈ 686 N',color: '#FF9800' },
+  { mass: 102.0, label: '≈ 102 kg = 1 kN',      color: '#F44336' },
+];
+
+// ══════════════════════════════════════════════════════════════════════
+//  Estado
+// ══════════════════════════════════════════════════════════════════════
+let currentMode = 'free';
+
+// ══════════════════════════════════════════════════════════════════════
+//  Referencias DOM
+// ══════════════════════════════════════════════════════════════════════
+const cvFall  = document.getElementById('cvFall');
+const cvUnits = document.getElementById('cvUnits');
+const cvBar   = document.getElementById('cvBar');
+const ctxF    = cvFall.getContext('2d');
+const ctxU    = cvUnits.getContext('2d');
+const ctxB    = cvBar.getContext('2d');
+
+const slMass   = document.getElementById('slMass');
+const slHeight = document.getElementById('slHeight');
+const slTime   = document.getElementById('slTime');
+const valMass   = document.getElementById('valMass');
+const valHeight = document.getElementById('valHeight');
+const valTime   = document.getElementById('valTime');
+
+// ══════════════════════════════════════════════════════════════════════
+//  Utilidades de dibujo
+// ══════════════════════════════════════════════════════════════════════
+
+/** Rounded rect path — call fill/stroke separately */
+function rrect(ctx, x, y, w, h, r = 6) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y,     x + w, y + r,     r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x,     y + h, x,      y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y,     x + r, y,             r);
+  ctx.closePath();
+}
+
+/** Arrow from (x1,y1) to (x2,y2) */
+function drawArrow(ctx, x1, y1, x2, y2, color, lw = 3, hs = 13) {
+  const dx  = x2 - x1, dy = y2 - y1;
+  const ang = Math.atan2(dy, dx);
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle   = color;
+  ctx.lineWidth   = lw;
+  ctx.lineCap     = 'round';
+  ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - hs * Math.cos(ang - 0.38), y2 - hs * Math.sin(ang - 0.38));
+  ctx.lineTo(x2 - hs * Math.cos(ang + 0.38), y2 - hs * Math.sin(ang + 0.38));
+  ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+
+/** Double-headed arrow between two points */
+function drawDoubleArrow(ctx, x1, y1, x2, y2, color, lw = 1.8, hs = 10) {
+  drawArrow(ctx, x2, y2, x1, y1, color, lw, hs);
+  drawArrow(ctx, x1, y1, x2, y2, color, lw, hs);
+}
+
+/**
+ * Badge: rounded box with text lines, centered at (cx, cy).
+ * If bottom=true the badge sits ABOVE cy.
+ */
+function badge(ctx, cx, cy, lines, color, fs = 10, bottom = false, bold = false) {
+  ctx.save();
+  ctx.font = `${bold ? 'bold ' : ''}${fs}px "Segoe UI", monospace`;
+  const lh  = fs + 6;
+  const pad = 6;
+  const maxW = Math.max(...lines.map(l => ctx.measureText(l).width));
+  const bw = maxW + pad * 2;
+  const bh = lines.length * lh + pad;
+  const bx = cx - bw / 2;
+  const by = bottom ? cy - bh - 4 : cy - bh / 2;
+
+  ctx.fillStyle   = CLR.bg + 'F0';
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 1.6;
+  rrect(ctx, bx, by, bw, bh);
+  ctx.fill(); ctx.stroke();
+
+  ctx.fillStyle    = color;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  lines.forEach((line, i) => {
+    ctx.fillText(line, cx, by + pad / 2 + (i + 0.5) * lh);
+  });
+  ctx.restore();
+}
+
+/** Ground hatching at y_px (pixel coords) */
+function drawGround(ctx, y_px, x0_px, x1_px) {
+  ctx.save();
+  ctx.strokeStyle = CLR.anchor;
+  ctx.lineWidth   = 3;
+  ctx.beginPath();
+  ctx.moveTo(x0_px, y_px);
+  ctx.lineTo(x1_px, y_px);
+  ctx.stroke();
+  ctx.lineWidth   = 1;
+  ctx.globalAlpha = 0.4;
+  const step = (x1_px - x0_px) / 11;
+  for (let i = 0; i <= 11; i++) {
+    const xi = x0_px + i * step;
+    ctx.beginPath();
+    ctx.moveTo(xi,      y_px);
+    ctx.lineTo(xi - 10, y_px + 20);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+/** Zigzag rope / spring between (px, y0_px) and (px, y1_px) in pixel coords */
+function drawZigzag(ctx, x_px, y0_px, y1_px, n, amp_px, color, lw = 2.5) {
+  const ys = [];
+  for (let i = 0; i <= n + 1; i++) ys.push(y0_px + (y1_px - y0_px) * i / (n + 1));
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = lw;
+  ctx.lineJoin    = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x_px, ys[0]);
+  for (let i = 1; i <= n; i++) {
+    const xOff = (i % 2 === 1 ? 1 : -1) * amp_px;
+    ctx.lineTo(x_px + xOff, ys[i]);
+  }
+  ctx.lineTo(x_px, ys[n + 1]);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Filled rounded box for the mass object */
+function drawBox(ctx, cx_px, ytop_px, w_px, h_px, label, color, alpha = 0.92) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle   = color;
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth   = 2.2;
+  rrect(ctx, cx_px - w_px / 2, ytop_px, w_px, h_px, 7);
+  ctx.fill(); ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.font         = 'bold 13px "Segoe UI", sans-serif';
+  ctx.fillStyle    = 'white';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(label, cx_px, ytop_px + h_px / 2);
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Panel IZQUIERDO — Diagrama de caída
+// ══════════════════════════════════════════════════════════════════════
+
+// Coordinate system for the fall diagram:
+//   logical y: 0 = ground, up = positive, MAX_H = 20
+//   canvas y: top = small y_px, grows downward
+
+function drawFallPanel(m, h, F_N, F_kN, v, Ep, mode) {
+  const W = cvFall.width, H = cvFall.height;
+  ctxF.clearRect(0, 0, W, H);
+  ctxF.fillStyle = CLR.bg;
+  ctxF.fillRect(0, 0, W, H);
+
+  const MAX_H = 20.0;
+
+  // Coordinate mapping: logical → pixel
+  // Logical space: y in [-2.5, MAX_H + 3.5]
+  // We show a limited window depending on mode
+  const logYmin = mode === 'brake' ? -5.2 : -2.5;
+  const logYmax = MAX_H + 3.5;
+
+  const PAD = { l: 20, r: 20, t: 38, b: 20 };
+  const dw  = W - PAD.l - PAD.r;
+  const dh  = H - PAD.t - PAD.b;
+  const logXmin = -2.8, logXmax = 2.8;
+
+  const sx = dw / (logXmax - logXmin);
+  const sy = dh / (logYmax - logYmin);
+  const px = lx => PAD.l + (lx - logXmin) * sx;
+  const py = ly => PAD.t + (logYmax - ly) * sy;
+
+  // Box geometry in logical units
+  const BW = 0.85, BH = 0.85;
+  const bw_px = BW * sx, bh_px = BH * sy;
+
+  // Title
+  ctxF.save();
+  ctxF.font         = 'bold 11px "Segoe UI", sans-serif';
+  ctxF.fillStyle    = CLR.text;
+  ctxF.textAlign    = 'center';
+  ctxF.textBaseline = 'middle';
+  if (mode === 'free') {
+    ctxF.fillText('La gravedad actúa sobre la masa', W / 2, 14);
+    ctxF.font = '10px "Segoe UI", sans-serif';
+    ctxF.fillStyle = CLR.text;
+    ctxF.globalAlpha = 0.7;
+    ctxF.fillText('(F = m × g  siempre constante)', W / 2, 27);
+  } else {
+    ctxF.fillText('Caída + frenado: la cuerda aplica', W / 2, 14);
+    ctxF.font = '10px "Segoe UI", sans-serif';
+    ctxF.fillStyle = CLR.text;
+    ctxF.globalAlpha = 0.7;
+    ctxF.fillText('fuerza de impacto  F = m·(g + v/t)', W / 2, 27);
+  }
+  ctxF.restore();
+
+  // Ground line
+  drawGround(ctxF, py(0), px(-2.2), px(2.2));
+
+  // Ground label
+  ctxF.save();
+  ctxF.font         = '9px "Segoe UI", sans-serif';
+  ctxF.fillStyle    = CLR.anchor;
+  ctxF.textAlign    = 'center';
+  ctxF.textBaseline = 'top';
+  ctxF.fillText('Suelo  (h = 0)', px(0), py(-0.55));
+  ctxF.restore();
+
+  if (mode === 'free') {
+    // ── CAÍDA LIBRE ────────────────────────────────────────────────
+
+    // Mass box at height h
+    drawBox(ctxF, px(0), py(h + BH), bw_px, bh_px, `${Math.round(m)} kg`, CLR.primary);
+
+    // v₀ = 0 badge
+    badge(ctxF, px(0), py(h + BH + 0.85), ['v₀ = 0 m/s'], CLR.accent, 11, false, true);
+    ctxF.save();
+    ctxF.font         = '9px "Segoe UI", sans-serif';
+    ctxF.fillStyle    = CLR.text;
+    ctxF.globalAlpha  = 0.6;
+    ctxF.textAlign    = 'center';
+    ctxF.textBaseline = 'middle';
+    ctxF.fillText('g = 9.81 m/s²', px(0), py(h + BH + 1.55));
+    ctxF.restore();
+
+    // Weight arrow downward from box bottom
+    const ALEN  = 2.6;
+    let tip_log;
+    if (h >= ALEN) {
+      tip_log = Math.max(h - ALEN, 0.1);
+    } else {
+      tip_log = Math.max(h - Math.max(h * 0.85, 0.35), 0.05);
+    }
+    drawArrow(ctxF, px(0), py(h), px(0), py(tip_log), CLR.danger, 4, 14);
+
+    // Force label beside arrow
+    ctxF.save();
+    ctxF.font         = 'bold 10px "Segoe UI", monospace';
+    ctxF.fillStyle    = CLR.danger;
+    ctxF.textAlign    = 'left';
+    ctxF.textBaseline = 'middle';
+    ctxF.fillText(`F = ${F_N.toLocaleString('es', {maximumFractionDigits:0})} N`, px(0.5), py((h + tip_log) / 2) - 7);
+    ctxF.fillText(`  = ${F_kN.toFixed(3)} kN`, px(0.5), py((h + tip_log) / 2) + 7);
+    ctxF.restore();
+
+    if (h >= 0.5) {
+      // Height double arrow
+      drawDoubleArrow(ctxF, px(-2.0), py(0), px(-2.0), py(h), CLR.warning, 1.8, 9);
+      ctxF.save();
+      ctxF.save();
+      ctxF.translate(px(-2.45), py(h / 2));
+      ctxF.rotate(-Math.PI / 2);
+      ctxF.font         = '9px "Segoe UI", sans-serif';
+      ctxF.fillStyle    = CLR.warning;
+      ctxF.textAlign    = 'center';
+      ctxF.textBaseline = 'middle';
+      ctxF.fillText(`h = ${h.toFixed(1)} m`, 0, 0);
+      ctxF.restore();
+      ctxF.restore();
+
+      // Dashed trajectory
+      ctxF.save();
+      ctxF.strokeStyle = CLR.warning;
+      ctxF.lineWidth   = 1.2;
+      ctxF.setLineDash([4, 5]);
+      ctxF.globalAlpha = 0.22;
+      ctxF.beginPath();
+      ctxF.moveTo(px(0.06), py(h));
+      ctxF.lineTo(px(0.06), py(0.05));
+      ctxF.stroke();
+      ctxF.restore();
+
+      // Velocity badge at bottom
+      badge(
+        ctxF, px(0), py(-1.35),
+        [`Al llegar al suelo:`, `v = √(2·g·h) = ${v.toFixed(1)} m/s`],
+        CLR.accent, 11, false, true
+      );
+
+      // Energy bars
+      if (Ep > 0) {
+        const E_ref   = m * G * MAX_H;
+        const bx0_l   = 1.15;
+        const blen_max_px = 1.45 * sx;
+        const by0_l   = MAX_H * 0.72;
+        const ep_bar_px = (Ep / E_ref) * blen_max_px;
+
+        for (const [by_l, clr, lbl] of [
+          [by0_l + 0.55, CLR.warning, 'Ep (inicio)'],
+          [by0_l,        CLR.accent,  'Ec (suelo)' ],
+        ]) {
+          const bx_px = px(bx0_l);
+          const by_px = py(by_l + 0.14);
+          const bh_bar = 0.28 * sy;
+          ctx_rrect_fill(ctxF, bx_px, by_px, Math.max(ep_bar_px, 4), bh_bar, clr, 0.7);
+
+          ctxF.save();
+          ctxF.font         = '8px "Segoe UI", sans-serif';
+          ctxF.fillStyle    = clr;
+          ctxF.textAlign    = 'right';
+          ctxF.textBaseline = 'middle';
+          ctxF.fillText(`${lbl}: ${Math.round(Ep).toLocaleString('es')} J`, bx_px - 4, py(by_l));
+          ctxF.restore();
+        }
+      }
+    } else {
+      // Placeholder text
+      ctxF.save();
+      ctxF.font         = '9px "Segoe UI", sans-serif';
+      ctxF.fillStyle    = CLR.text;
+      ctxF.globalAlpha  = 0.5;
+      ctxF.textAlign    = 'center';
+      ctxF.textBaseline = 'middle';
+      ctxF.fillStyle    = CLR.text;
+      ctxF.fillText('Mueve el slider de altura', px(0), py(-1.2));
+      ctxF.fillText('para ver la velocidad ganada', px(0), py(-1.6));
+      ctxF.restore();
+    }
+
+  } else {
+    // ── MODO FRENADO ───────────────────────────────────────────────
+    const a_brake  = v > 0 ? v / parseFloat(slTime.value) : 0;
+    const F_imp_N  = m * (G + a_brake);
+    const F_imp_kN = F_imp_N / 1000;
+    const d_brake  = v * parseFloat(slTime.value) / 2;
+
+    const BRAKE_Y   = -2.0;
+    const mass_top  = BRAKE_Y + BH / 2;
+    const mass_bot  = BRAKE_Y - BH / 2;
+
+    // Ground label supplement
+    ctxF.save();
+    ctxF.font         = '8px "Segoe UI", sans-serif';
+    ctxF.fillStyle    = CLR.anchor;
+    ctxF.globalAlpha  = 0.75;
+    ctxF.textAlign    = 'center';
+    ctxF.textBaseline = 'top';
+    ctxF.fillText('← cuerda se tensa', px(1.6), py(0.18));
+    ctxF.restore();
+
+    // ── Fase 1: Masa en lo alto ────────────────────────────────────
+    drawBox(ctxF, px(0), py(h + BH), bw_px, bh_px, `${Math.round(m)} kg`, CLR.primary);
+
+    // v₀ badge
+    badge(ctxF, px(0), py(h + BH + 0.75), ['v₀ = 0 m/s'], CLR.accent, 10, false, true);
+
+    if (h >= 0.5) {
+      // Weight arrow (indicative, softer)
+      const tip_g = Math.max(h - 2.2, h / 2);
+      drawArrow(ctxF, px(0), py(h), px(0), py(tip_g), CLR.danger, 2.5, 12);
+      ctxF.save();
+      ctxF.font         = '8px "Segoe UI", sans-serif';
+      ctxF.fillStyle    = CLR.danger;
+      ctxF.globalAlpha  = 0.7;
+      ctxF.textAlign    = 'left';
+      ctxF.textBaseline = 'middle';
+      ctxF.fillText(`g·m = ${Math.round(F_N).toLocaleString('es')} N`, px(0.5), py((h + tip_g) / 2));
+      ctxF.restore();
+
+      // Height double arrow
+      drawDoubleArrow(ctxF, px(-2.0), py(0), px(-2.0), py(h), CLR.warning, 1.5, 8);
+      ctxF.save();
+      ctxF.translate(px(-2.45), py(h / 2));
+      ctxF.rotate(-Math.PI / 2);
+      ctxF.font         = '9px "Segoe UI", sans-serif';
+      ctxF.fillStyle    = CLR.warning;
+      ctxF.textAlign    = 'center';
+      ctxF.textBaseline = 'middle';
+      ctxF.fillText(`h = ${h.toFixed(1)} m`, 0, 0);
+      ctxF.restore();
+
+      // Dashed trajectory
+      ctxF.save();
+      ctxF.strokeStyle = CLR.warning;
+      ctxF.lineWidth   = 1;
+      ctxF.setLineDash([4, 6]);
+      ctxF.globalAlpha = 0.18;
+      ctxF.beginPath();
+      ctxF.moveTo(px(0.05), py(h));
+      ctxF.lineTo(px(0.05), py(0.05));
+      ctxF.stroke();
+      ctxF.restore();
+
+      // Impact velocity label
+      ctxF.save();
+      ctxF.font         = 'bold 9px "Segoe UI", sans-serif';
+      ctxF.fillStyle    = CLR.warning;
+      ctxF.globalAlpha  = 0.9;
+      ctxF.textAlign    = 'center';
+      ctxF.textBaseline = 'middle';
+      ctxF.fillText(`v impacto = ${v.toFixed(1)} m/s`, px(0), py(0.28));
+      ctxF.restore();
+
+      // ── Fase 2: Cuerda frenando ────────────────────────────────
+      // Brake distance label
+      ctxF.save();
+      ctxF.font         = '8px "Segoe UI", sans-serif';
+      ctxF.fillStyle    = CLR.rope;
+      ctxF.globalAlpha  = 0.85;
+      ctxF.textAlign    = 'center';
+      ctxF.textBaseline = 'middle';
+      ctxF.fillText(`Cuerda`, px(-1.8), py((mass_top - 0.1) / 2 + 0.4));
+      ctxF.fillText(`frenando`, px(-1.8), py((mass_top - 0.1) / 2));
+      ctxF.fillText(`d = ${d_brake.toFixed(2)} m`, px(-1.8), py((mass_top - 0.1) / 2 - 0.4));
+      ctxF.restore();
+
+      // Zigzag rope from ground to mass top
+      drawZigzag(ctxF, px(0), py(-0.12), py(mass_top), 9, 16, CLR.rope, 2.8);
+
+      // Stopped mass (grey, lower position)
+      drawBox(ctxF, px(0), py(mass_bot + BH), bw_px, bh_px, `${Math.round(m)} kg`, '#546E7A', 0.88);
+
+      // Scale arrows
+      const MG_LEN = 1.2;
+      const F_ratio = F_N > 0 ? F_imp_N / F_N : 1;
+      const IMP_LEN = Math.min(F_ratio * MG_LEN, 3.8);
+
+      // Impact force arrow (upward, red)
+      drawArrow(ctxF, px(0), py(mass_top), px(0), py(mass_top + IMP_LEN), CLR.danger, 4.5, 16);
+      ctxF.save();
+      ctxF.font         = 'bold 9px "Segoe UI", monospace';
+      ctxF.fillStyle    = CLR.danger;
+      ctxF.textAlign    = 'left';
+      ctxF.textBaseline = 'middle';
+      ctxF.fillText(`F impacto`,     px(0.55), py(mass_top + IMP_LEN / 2) - 10);
+      ctxF.fillText(`= ${Math.round(F_imp_N).toLocaleString('es')} N`, px(0.55), py(mass_top + IMP_LEN / 2));
+      ctxF.fillText(`= ${F_imp_kN.toFixed(3)} kN`, px(0.55), py(mass_top + IMP_LEN / 2) + 10);
+      ctxF.restore();
+
+      // mg arrow downward (orange)
+      drawArrow(ctxF, px(0), py(mass_bot), px(0), py(mass_bot - MG_LEN), CLR.secondary, 2.5, 13);
+      ctxF.save();
+      ctxF.font         = '8px "Segoe UI", sans-serif';
+      ctxF.fillStyle    = CLR.secondary;
+      ctxF.textAlign    = 'right';
+      ctxF.textBaseline = 'middle';
+      ctxF.fillText(`mg`,             px(-0.6), py(mass_bot - MG_LEN / 2) - 6);
+      ctxF.fillText(`${Math.round(F_N).toLocaleString('es')} N`, px(-0.6), py(mass_bot - MG_LEN / 2) + 6);
+      ctxF.restore();
+
+      // v final badge
+      badge(ctxF, px(0), py(mass_bot - 0.6), ['v final = 0 m/s'], CLR.accent, 10, false, true);
+
+      // Deceleration text
+      ctxF.save();
+      ctxF.font         = '9px "Segoe UI", sans-serif';
+      ctxF.fillStyle    = CLR.text;
+      ctxF.globalAlpha  = 0.7;
+      ctxF.textAlign    = 'center';
+      ctxF.textBaseline = 'middle';
+      ctxF.fillText(`a frenado = v/t = ${a_brake.toFixed(1)} m/s²`, px(0), py(mass_bot - 1.35));
+      ctxF.restore();
+
+    } else {
+      ctxF.save();
+      ctxF.font         = '9px "Segoe UI", sans-serif';
+      ctxF.fillStyle    = CLR.text;
+      ctxF.globalAlpha  = 0.5;
+      ctxF.textAlign    = 'center';
+      ctxF.textBaseline = 'middle';
+      ctxF.fillText('Aumenta la altura de caída', px(0), py(-1.2));
+      ctxF.fillText('para ver la fuerza de frenado', px(0), py(-1.6));
+      ctxF.restore();
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Panel CENTRAL — N vs kN (libre) / F estática vs impacto (frenado)
+// ══════════════════════════════════════════════════════════════════════
+
+function drawUnitsPanel(m, F_N, F_kN, mode, v, t_b, a_brake, F_imp_N, F_imp_kN, d_brake) {
+  const W = cvUnits.width, H = cvUnits.height;
+  ctxU.clearRect(0, 0, W, H);
+  ctxU.fillStyle = CLR.bg;
+  ctxU.fillRect(0, 0, W, H);
+
+  if (mode === 'free') {
+    // ── La misma fuerza, dos unidades distintas ────────────────────
+
+    ctxU.save();
+    ctxU.font         = 'bold 12px "Segoe UI", sans-serif';
+    ctxU.fillStyle    = CLR.text;
+    ctxU.textAlign    = 'center';
+    ctxU.textBaseline = 'middle';
+    ctxU.fillText('La misma fuerza,', W / 2, 22);
+    ctxU.fillText('dos unidades distintas', W / 2, 38);
+    ctxU.restore();
+
+    const centerX = W / 2;
+    let y = 80;
+
+    // Newton badge
+    bigBadge(ctxU, centerX, y, `${F_N.toLocaleString('es', {maximumFractionDigits:1})} N`, CLR.warning, 30);
+    ctxU.save();
+    ctxU.font         = '10px "Segoe UI", sans-serif';
+    ctxU.fillStyle    = CLR.text;
+    ctxU.globalAlpha  = 0.75;
+    ctxU.textAlign    = 'center';
+    ctxU.textBaseline = 'middle';
+    ctxU.fillText('(Newtons)', centerX, y + 34);
+    ctxU.restore();
+
+    // Conversion arrow
+    y += 60;
+    drawArrow(ctxU, centerX, y, centerX, y + 25, CLR.text + 'CC', 1.8, 10);
+    ctxU.save();
+    ctxU.font         = '10px "Segoe UI", sans-serif';
+    ctxU.fillStyle    = CLR.text;
+    ctxU.globalAlpha  = 0.65;
+    ctxU.textAlign    = 'center';
+    ctxU.textBaseline = 'middle';
+    // Division box
+    const divLbl = '÷ 1 000';
+    const dw = ctxU.measureText(divLbl).width + 18;
+    ctxU.fillStyle   = CLR.bg;
+    ctxU.strokeStyle = CLR.grid;
+    ctxU.lineWidth   = 1;
+    rrect(ctxU, centerX - dw / 2, y + 5, dw, 18, 4);
+    ctxU.fill(); ctxU.stroke();
+    ctxU.fillStyle = CLR.text;
+    ctxU.globalAlpha = 0.65;
+    ctxU.fillText(divLbl, centerX, y + 14);
+    ctxU.restore();
+
+    y += 38;
+    drawArrow(ctxU, centerX, y, centerX, y + 20, CLR.text + 'CC', 1.8, 10);
+    y += 34;
+
+    // kN badge
+    bigBadge(ctxU, centerX, y, `${F_kN.toFixed(3)} kN`, CLR.primary, 30);
+    ctxU.save();
+    ctxU.font         = '10px "Segoe UI", sans-serif';
+    ctxU.fillStyle    = CLR.text;
+    ctxU.globalAlpha  = 0.75;
+    ctxU.textAlign    = 'center';
+    ctxU.textBaseline = 'middle';
+    ctxU.fillText('(kilonewtons  =  1 000 N)', centerX, y + 34);
+    ctxU.restore();
+
+    // Separator
+    y += 60;
+    ctxU.save();
+    ctxU.strokeStyle = CLR.grid;
+    ctxU.lineWidth   = 1;
+    ctxU.globalAlpha = 0.5;
+    ctxU.beginPath(); ctxU.moveTo(20, y); ctxU.lineTo(W - 20, y); ctxU.stroke();
+    ctxU.restore();
+
+    y += 12;
+    ctxU.save();
+    ctxU.font         = '9px "Segoe UI", sans-serif';
+    ctxU.fillStyle    = CLR.text;
+    ctxU.globalAlpha  = 0.6;
+    ctxU.textAlign    = 'center';
+    ctxU.textBaseline = 'middle';
+    ctxU.fillText('Escala de referencia  (log)', W / 2, y);
+    ctxU.restore();
+
+    y += 14;
+
+    // Reference bars (log scale)
+    const BAR_X0   = 80;
+    const BAR_XMAX = W - 18;
+    const BAR_MAX_PX = BAR_XMAX - BAR_X0;
+    const REF_MAX_N = 1000.0;
+
+    for (const { mass: mRef, label, color } of REF_OBJECTS) {
+      const f_ref = mRef * G;
+      const bar_px = (Math.log10(f_ref + 1) / Math.log10(REF_MAX_N + 1)) * BAR_MAX_PX;
+      ctxU.save();
+      ctxU.fillStyle   = color;
+      ctxU.globalAlpha = 0.7;
+      rrect(ctxU, BAR_X0, y - 8, Math.max(bar_px, 3), 16, 3);
+      ctxU.fill();
+      ctxU.globalAlpha = 1;
+      ctxU.font         = '7.5px "Segoe UI", sans-serif';
+      ctxU.fillStyle    = color;
+      ctxU.textAlign    = 'right';
+      ctxU.textBaseline = 'middle';
+      ctxU.fillText(label, BAR_X0 - 4, y);
+      ctxU.restore();
+      y += 28;
+    }
+
+    // Current mass bar
+    const f_cur_bar = Math.max(Math.min(
+      (Math.log10(F_N + 1) / Math.log10(REF_MAX_N + 1)) * BAR_MAX_PX,
+      BAR_MAX_PX
+    ), 4);
+    ctxU.save();
+    ctxU.fillStyle   = CLR.warning;
+    ctxU.strokeStyle = 'white';
+    ctxU.lineWidth   = 1.2;
+    ctxU.globalAlpha = 0.9;
+    rrect(ctxU, BAR_X0, y - 9, f_cur_bar, 18, 3);
+    ctxU.fill(); ctxU.stroke();
+    ctxU.globalAlpha = 1;
+    ctxU.font         = 'bold 8px "Segoe UI", sans-serif';
+    ctxU.fillStyle    = CLR.warning;
+    ctxU.textAlign    = 'right';
+    ctxU.textBaseline = 'middle';
+    ctxU.fillText(`← Tu masa  ${Math.round(m)} kg`, BAR_X0 - 4, y);
+    ctxU.restore();
+
+  } else {
+    // ── F estática vs F impacto ────────────────────────────────────
+
+    ctxU.save();
+    ctxU.font         = 'bold 12px "Segoe UI", sans-serif';
+    ctxU.fillStyle    = CLR.text;
+    ctxU.textAlign    = 'center';
+    ctxU.textBaseline = 'middle';
+    ctxU.fillText('Fuerza estática  vs  fuerza de impacto', W / 2, 22);
+    ctxU.restore();
+
+    const col1X = W / 4;
+    const col2X = 3 * W / 4;
+
+    // Left column: F estática
+    ctxU.save();
+    ctxU.font         = 'bold 10px "Segoe UI", sans-serif';
+    ctxU.fillStyle    = CLR.primary;
+    ctxU.textAlign    = 'center';
+    ctxU.textBaseline = 'middle';
+    ctxU.fillText('F estática', col1X, 44);
+    ctxU.font = '7.5px "Segoe UI", sans-serif';
+    ctxU.fillStyle = CLR.text; ctxU.globalAlpha = 0.6;
+    ctxU.fillText('(masa colgando en reposo)', col1X, 57);
+    ctxU.restore();
+
+    bigBadge(ctxU, col1X, 100, `${Math.round(F_N).toLocaleString('es')} N`, CLR.primary, 18);
+    ctxU.save();
+    ctxU.font         = 'bold 13px "Segoe UI", monospace';
+    ctxU.fillStyle    = CLR.primary;
+    ctxU.textAlign    = 'center';
+    ctxU.textBaseline = 'middle';
+    ctxU.fillText(`= ${F_kN.toFixed(3)} kN`, col1X, 136);
+    ctxU.font = '9px "Segoe UI", sans-serif';
+    ctxU.fillStyle = CLR.text; ctxU.globalAlpha = 0.55;
+    ctxU.fillText('= m × g', col1X, 152);
+    ctxU.restore();
+
+    // Vertical separator
+    ctxU.save();
+    ctxU.strokeStyle = CLR.grid;
+    ctxU.lineWidth   = 1;
+    ctxU.globalAlpha = 0.5;
+    ctxU.beginPath(); ctxU.moveTo(W / 2, 40); ctxU.lineTo(W / 2, H - 60); ctxU.stroke();
+    ctxU.restore();
+
+    // Right column: F impacto
+    ctxU.save();
+    ctxU.font         = 'bold 10px "Segoe UI", sans-serif';
+    ctxU.fillStyle    = CLR.danger;
+    ctxU.textAlign    = 'center';
+    ctxU.textBaseline = 'middle';
+    ctxU.fillText('F impacto', col2X, 44);
+    ctxU.font = '7.5px "Segoe UI", sans-serif';
+    ctxU.fillStyle = CLR.text; ctxU.globalAlpha = 0.6;
+    ctxU.fillText(`(frenando en ${t_b.toFixed(2)} s)`, col2X, 57);
+    ctxU.restore();
+
+    bigBadge(ctxU, col2X, 100, `${Math.round(F_imp_N).toLocaleString('es')} N`, CLR.danger, 18);
+    ctxU.save();
+    ctxU.font         = 'bold 13px "Segoe UI", monospace';
+    ctxU.fillStyle    = CLR.danger;
+    ctxU.textAlign    = 'center';
+    ctxU.textBaseline = 'middle';
+    ctxU.fillText(`= ${F_imp_kN.toFixed(3)} kN`, col2X, 136);
+    ctxU.font = '9px "Segoe UI", sans-serif';
+    ctxU.fillStyle = CLR.text; ctxU.globalAlpha = 0.55;
+    ctxU.fillText('= m·(g + v/t)', col2X, 152);
+    ctxU.restore();
+
+    // Multiplier
+    const mult = F_N > 0 ? F_imp_N / F_N : 1;
+    const mColor = mult > 5 ? CLR.danger :
+                   mult > 2 ? CLR.secondary :
+                   mult > 1.2 ? CLR.warning : CLR.accent;
+    bigBadge(ctxU, W / 2, 200, `× ${mult.toFixed(1)}`, mColor, 28);
+    ctxU.save();
+    ctxU.font         = '8.5px "Segoe UI", sans-serif';
+    ctxU.fillStyle    = CLR.text;
+    ctxU.globalAlpha  = 0.7;
+    ctxU.textAlign    = 'center';
+    ctxU.textBaseline = 'middle';
+    ctxU.fillText('veces el peso estático', W / 2, 236);
+    ctxU.restore();
+
+    // Separator
+    ctxU.save();
+    ctxU.strokeStyle = CLR.grid;
+    ctxU.lineWidth   = 1;
+    ctxU.globalAlpha = 0.4;
+    ctxU.beginPath(); ctxU.moveTo(14, 252); ctxU.lineTo(W - 14, 252); ctxU.stroke();
+    ctxU.restore();
+
+    // Data table
+    const rows = [
+      { lbl: 'Velocidad de impacto:', val: `${v.toFixed(2)} m/s`,         color: CLR.warning   },
+      { lbl: 'Desaceleración:',       val: `${a_brake.toFixed(1)} m/s²`,  color: CLR.danger    },
+      { lbl: 'Tiempo de frenado:',    val: `${t_b.toFixed(2)} s`,         color: CLR.secondary },
+      { lbl: 'Distancia de frenado:', val: `${d_brake.toFixed(3)} m`,     color: CLR.info      },
+    ];
+    let ry = 278;
+    for (const { lbl, val, color } of rows) {
+      ctxU.save();
+      ctxU.font         = '8.5px "Segoe UI", sans-serif';
+      ctxU.fillStyle    = CLR.text;
+      ctxU.globalAlpha  = 0.75;
+      ctxU.textAlign    = 'left';
+      ctxU.textBaseline = 'middle';
+      ctxU.fillText(lbl, 16, ry);
+      ctxU.globalAlpha = 1;
+      ctxU.fillStyle    = color;
+      ctxU.font         = 'bold 8.5px "Segoe UI", monospace';
+      ctxU.textAlign    = 'right';
+      ctxU.fillText(val, W - 16, ry);
+      ctxU.restore();
+      ry += 22;
+    }
+
+    // Formula
+    const formula1 = `F = m·(g + v/t)  =  ${Math.round(m)}·(${G.toFixed(2)} + ${a_brake.toFixed(2)})`;
+    const formula2 = `= ${Math.round(m)} × ${(G + a_brake).toFixed(2)} = ${Math.round(F_imp_N).toLocaleString('es')} N`;
+    ctxU.save();
+    const fmW = Math.max(
+      ctxU.measureText(formula1).width,
+      ctxU.measureText(formula2).width
+    ) + 20;
+    const fmH = 38, fmX = (W - fmW) / 2, fmY = H - 72;
+    ctxU.fillStyle   = CLR.panel;
+    ctxU.strokeStyle = CLR.grid;
+    ctxU.lineWidth   = 1;
+    rrect(ctxU, fmX, fmY, fmW, fmH, 5);
+    ctxU.fill(); ctxU.stroke();
+    ctxU.font         = '7.5px "Segoe UI", monospace';
+    ctxU.fillStyle    = CLR.text;
+    ctxU.globalAlpha  = 0.6;
+    ctxU.textAlign    = 'center';
+    ctxU.textBaseline = 'middle';
+    ctxU.fillText(formula1, W / 2, fmY + 11);
+    ctxU.font      = 'bold 9px "Segoe UI", monospace';
+    ctxU.fillStyle = CLR.danger;
+    ctxU.globalAlpha = 1;
+    ctxU.fillText(formula2, W / 2, fmY + 27);
+    ctxU.restore();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Panel DERECHO — Barras comparativas
+// ══════════════════════════════════════════════════════════════════════
+
+function drawBarPanel(m, F_N, F_kN, mode, h, t_b, F_imp_N, F_imp_kN) {
+  const W = cvBar.width, H = cvBar.height;
+  ctxB.clearRect(0, 0, W, H);
+  ctxB.fillStyle = CLR.bg;
+  ctxB.fillRect(0, 0, W, H);
+
+  const f_shock_kN = m * G * 1.77 / 1000;
+  const brake_mode = mode === 'brake';
+
+  let scenarios;
+  let titleLines;
+
+  if (brake_mode) {
+    scenarios = [
+      { label: `F impacto\n(${Math.round(m)} kg, t=${t_b.toFixed(2)}s)`, val: F_imp_kN,        color: CLR.danger,    highlight: true },
+      { label: `Peso estático\n(${Math.round(m)} kg)`,                   val: F_kN,             color: CLR.warning,   highlight: false },
+      { label: 'Rescatista + paciente\n(160 kg × g)',                     val: 160*G/1000,       color: CLR.primary,   highlight: false },
+      { label: 'Choque caída factor 1',                                   val: f_shock_kN,       color: CLR.secondary, highlight: false },
+      { label: 'Carga trabajo NFPA 1983',                                 val: NFPA_WORK_LOAD,   color: CLR.danger,    highlight: false },
+      { label: 'Rotura cuerda estática 11mm',                             val: ROPE_MBS,         color: CLR.accent,    highlight: false },
+    ];
+    titleLines = [
+      `F impacto: ${F_imp_kN.toFixed(2)} kN  vs  Peso: ${F_kN.toFixed(2)} kN`,
+      `(masa ${Math.round(m)} kg · caída ${h.toFixed(1)} m · frenado ${t_b.toFixed(2)} s)`,
+    ];
+  } else {
+    scenarios = [
+      { label: `Peso de ${Math.round(m)} kg\n(${Math.round(F_N).toLocaleString('es')} N)`, val: F_kN,           color: CLR.warning,   highlight: false },
+      { label: 'Rescatista + paciente\n(160 kg × g)',                                        val: 160*G/1000,     color: CLR.primary,   highlight: false },
+      { label: 'Fuerza de choque\n(caída factor 1)',                                          val: f_shock_kN,     color: CLR.secondary, highlight: false },
+      { label: 'Carga trabajo\nNFPA 1983',                                                    val: NFPA_WORK_LOAD, color: CLR.danger,    highlight: false },
+      { label: 'Rotura cuerda\nestática 11 mm',                                               val: ROPE_MBS,       color: CLR.accent,    highlight: false },
+    ];
+    titleLines = [
+      `Misma masa (${Math.round(m)} kg) en contexto de rescate`,
+      '1 kN = 1 000 N  (kilonewton = mil newtons)',
+    ];
+  }
+
+  const maxVal = Math.max(...scenarios.map(s => s.val));
+
+  // ── Layout ──────────────────────────────────────────────────────
+  const PAD = { l: 14, r: 12, t: 56, b: 60 };
+  const cw  = W - PAD.l - PAD.r;
+  const ch  = H - PAD.t - PAD.b;
+  const nBars = scenarios.length;
+  const barAreaH = ch;
+  const rowH = barAreaH / nBars;
+  const barH = Math.min(rowH * 0.55, 34);
+  const barMaxW = cw * 0.55;         // reserve right side for labels
+  const XMAX = maxVal * 1.52;
+
+  const bx = v => PAD.l + (v / XMAX) * barMaxW;
+  const by = i => PAD.t + i * rowH + (rowH - barH) / 2;
+
+  // Title
+  ctxB.save();
+  ctxB.font         = 'bold 10px "Segoe UI", sans-serif';
+  ctxB.fillStyle    = CLR.text;
+  ctxB.textAlign    = 'center';
+  ctxB.textBaseline = 'middle';
+  ctxB.fillText(titleLines[0], W / 2, 18);
+  ctxB.font = '9px "Segoe UI", sans-serif';
+  ctxB.globalAlpha = 0.7;
+  ctxB.fillText(titleLines[1], W / 2, 33);
+  ctxB.restore();
+
+  // X axis
+  ctxB.save();
+  ctxB.strokeStyle = CLR.anchor;
+  ctxB.lineWidth   = 1.5;
+  ctxB.beginPath();
+  ctxB.moveTo(PAD.l, PAD.t + ch);
+  ctxB.lineTo(PAD.l + barMaxW, PAD.t + ch);
+  ctxB.stroke();
+  ctxB.restore();
+
+  // X axis label
+  ctxB.save();
+  ctxB.font         = '11px "Segoe UI", sans-serif';
+  ctxB.fillStyle    = CLR.text;
+  ctxB.textAlign    = 'center';
+  ctxB.textBaseline = 'top';
+  ctxB.fillText('Fuerza (kN)', PAD.l + barMaxW / 2, H - 52);
+  ctxB.restore();
+
+  // Grid lines
+  const nTicks = 4;
+  for (let i = 0; i <= nTicks; i++) {
+    const v = (XMAX / nTicks) * i;
+    const xp = bx(v);
+    ctxB.save();
+    ctxB.strokeStyle = CLR.grid;
+    ctxB.lineWidth   = 0.5;
+    ctxB.globalAlpha = 0.3;
+    ctxB.beginPath();
+    ctxB.moveTo(xp, PAD.t);
+    ctxB.lineTo(xp, PAD.t + ch);
+    ctxB.stroke();
+    ctxB.globalAlpha = 0.6;
+    ctxB.font = '8px "Segoe UI", sans-serif';
+    ctxB.fillStyle = CLR.text;
+    ctxB.textAlign = 'center';
+    ctxB.textBaseline = 'top';
+    ctxB.fillText(v.toFixed(1), xp, PAD.t + ch + 4);
+    ctxB.restore();
+  }
+
+  // Bars
+  for (let i = 0; i < scenarios.length; i++) {
+    const { label, val, color, highlight } = scenarios[i];
+    const barW_px = (val / XMAX) * barMaxW;
+    const by_px   = by(i);
+
+    // Bar
+    ctxB.save();
+    ctxB.globalAlpha = highlight ? 1.0 : 0.88;
+    ctxB.fillStyle   = color;
+    rrect(ctxB, PAD.l, by_px, Math.max(barW_px, 2), barH, 3);
+    ctxB.fill();
+    if (highlight) {
+      ctxB.strokeStyle = color;
+      ctxB.lineWidth   = 2.5;
+      ctxB.stroke();
+    }
+    ctxB.restore();
+
+    // Bar label (left, inside bar area, rotated for long names)
+    const labelLines = label.split('\n');
+    const lx = PAD.l + barMaxW + 8;
+    const ly = by_px + barH / 2;
+    ctxB.save();
+    ctxB.font         = `${highlight ? 'bold ' : ''}8px "Segoe UI", sans-serif`;
+    ctxB.fillStyle    = color;
+    ctxB.textAlign    = 'left';
+    ctxB.textBaseline = 'middle';
+    const lineH = 11;
+    const totalH = labelLines.length * lineH;
+    labelLines.forEach((ln, li) => {
+      ctxB.fillText(ln, lx, ly - totalH / 2 + li * lineH + lineH / 2);
+    });
+    ctxB.restore();
+
+    // Value label to right of bar
+    ctxB.save();
+    ctxB.font         = 'bold 9px "Segoe UI", monospace';
+    ctxB.fillStyle    = CLR.text;
+    ctxB.textAlign    = 'left';
+    ctxB.textBaseline = 'middle';
+    const valStr = `${val.toFixed(2)} kN`;
+    const vx = PAD.l + Math.max(barW_px, 2) + 3;
+    ctxB.fillText(valStr, vx, by_px + barH / 2 - 5);
+    ctxB.font = '7px "Segoe UI", monospace';
+    ctxB.globalAlpha = 0.7;
+    ctxB.fillText(`= ${Math.round(val*1000).toLocaleString('es')} N`, vx, by_px + barH / 2 + 6);
+    ctxB.restore();
+  }
+
+  // Warning if F_impact exceeds NFPA or MBS
+  if (brake_mode && F_imp_kN > NFPA_WORK_LOAD) {
+    const warn_color = F_imp_kN > ROPE_MBS ? CLR.danger : CLR.secondary;
+    const warn_text  = F_imp_kN > ROPE_MBS
+      ? '¡SUPERA ROTURA CUERDA!'
+      : 'Supera carga NFPA 1983';
+
+    const wmW = ctxB.measureText(warn_text).width + 28;
+    const wmH = 24;
+    const wmX = PAD.l + barMaxW / 2 - wmW / 2;
+    const wmY = H - 28;
+
+    ctxB.save();
+    ctxB.fillStyle   = CLR.panel;
+    ctxB.strokeStyle = warn_color;
+    ctxB.lineWidth   = 2;
+    rrect(ctxB, wmX, wmY, wmW, wmH, 5);
+    ctxB.fill(); ctxB.stroke();
+    ctxB.font         = 'bold 10px "Segoe UI", sans-serif';
+    ctxB.fillStyle    = warn_color;
+    ctxB.textAlign    = 'center';
+    ctxB.textBaseline = 'middle';
+    ctxB.fillText(warn_text, PAD.l + barMaxW / 2, wmY + wmH / 2);
+    ctxB.restore();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Helpers auxiliares
+// ══════════════════════════════════════════════════════════════════════
+
+/** Large value badge centered at (cx, cy) */
+function bigBadge(ctx, cx, cy, text, color, fs = 22) {
+  ctx.save();
+  ctx.font = `bold ${fs}px "Segoe UI", monospace`;
+  const tw  = ctx.measureText(text).width;
+  const pad = 12;
+  const bw  = tw + pad * 2;
+  const bh  = fs + pad;
+  const bx  = cx - bw / 2;
+  const by  = cy - bh / 2;
+
+  ctx.fillStyle   = CLR.panel;
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 2.5;
+  rrect(ctx, bx, by, bw, bh, 7);
+  ctx.fill(); ctx.stroke();
+
+  ctx.fillStyle    = color;
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, cx, cy + 1);
+  ctx.restore();
+}
+
+/** Fill a rounded rect with color and alpha */
+function ctx_rrect_fill(ctx, x, y, w, h, color, alpha = 1) {
+  ctx.save();
+  ctx.fillStyle   = color;
+  ctx.globalAlpha = alpha;
+  rrect(ctx, x, y, w, h, 3);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Modo
+// ══════════════════════════════════════════════════════════════════════
+
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('btnFree').classList.toggle('active',  mode === 'free');
+  document.getElementById('btnBrake').classList.toggle('active', mode === 'brake');
+  update();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Bucle principal de actualización
+// ══════════════════════════════════════════════════════════════════════
+
+function update() {
+  const m   = +slMass.value;
+  const h   = +slHeight.value;
+  const t_b = +slTime.value;
+
+  valMass.textContent   = `${m} kg`;
+  valHeight.textContent = `${h.toFixed(1)} m`;
+  valTime.textContent   = `${t_b.toFixed(2)} s`;
+
+  const F_N   = m * G;
+  const F_kN  = F_N / 1000;
+  const v     = h > 0 ? Math.sqrt(2 * G * h) : 0;
+  const Ep    = m * G * h;
+
+  const a_brake  = v > 0 ? v / t_b : 0;
+  const F_imp_N  = m * (G + a_brake);
+  const F_imp_kN = F_imp_N / 1000;
+  const d_brake  = v * t_b / 2;
+
+  drawFallPanel(m, h, F_N, F_kN, v, Ep, currentMode);
+  drawUnitsPanel(m, F_N, F_kN, currentMode, v, t_b, a_brake, F_imp_N, F_imp_kN, d_brake);
+  drawBarPanel(m, F_N, F_kN, currentMode, h, t_b, F_imp_N, F_imp_kN);
+}
+
+slMass.addEventListener('input',   update);
+slHeight.addEventListener('input', update);
+slTime.addEventListener('input',   update);
+
+update();
+</script>
+</body>
+</html>
