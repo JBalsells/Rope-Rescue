@@ -1,0 +1,1292 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Física del Rescate — Sistema English Reeve</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #0f0f1a;
+      color: #ECEFF1;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 12px 10px 20px;
+      min-height: 100vh;
+      user-select: none;
+    }
+
+    h1 {
+      font-size: 1.45rem;
+      color: #00BCD4;
+      text-align: center;
+      margin-bottom: 5px;
+      letter-spacing: 0.4px;
+      font-weight: 700;
+    }
+
+    .warning-bar {
+      color: #F44336;
+      font-size: 0.82rem;
+      font-style: italic;
+      font-weight: bold;
+      text-align: center;
+      max-width: 1200px;
+      margin-bottom: 10px;
+      line-height: 1.5;
+    }
+
+    .main-layout {
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+      width: 100%;
+      max-width: 1200px;
+      margin-bottom: 10px;
+    }
+
+    canvas {
+      display: block;
+      border-radius: 7px;
+      border: 1px solid #2a2a3e;
+      background: #0f0f1a;
+      flex-shrink: 0;
+    }
+
+    /* ── Right info panel ── */
+    .right-panel {
+      flex: 1;
+      min-width: 0;
+      background: #16213e;
+      border: 1px solid #00BCD4;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 0.82rem;
+    }
+
+    .panel-section {
+      margin-bottom: 10px;
+    }
+
+    .panel-heading {
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #00BCD4;
+      margin-bottom: 5px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .panel-heading.gold  { color: #F0C337; }
+    .panel-heading.warn  { color: #FFC107; }
+
+    .kv-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 6px;
+      margin-bottom: 3px;
+    }
+
+    .kv-key   { color: #78909C; flex-shrink: 0; font-size: 0.78rem; }
+    .kv-val   { font-weight: 700; font-variant-numeric: tabular-nums; font-size: 0.85rem; }
+    .kv-val.primary   { color: #00BCD4; }
+    .kv-val.warning   { color: #FFC107; }
+    .kv-val.danger    { color: #F44336; }
+    .kv-val.accent    { color: #4CAF50; }
+    .kv-val.info      { color: #2196F3; }
+    .kv-val.gold      { color: #F0C337; }
+    .kv-val.rope      { color: #FFA726; }
+
+    .divider {
+      border: none;
+      border-top: 1px solid #2a2a3e;
+      margin: 7px 0;
+    }
+
+    /* ── VM buttons ── */
+    .btn-row {
+      display: flex;
+      gap: 5px;
+      margin-bottom: 8px;
+    }
+
+    .btn-vm {
+      flex: 1;
+      padding: 6px 4px;
+      border-radius: 5px;
+      border: 1px solid #2a2a3e;
+      background: #1a1a2e;
+      color: #ECEFF1;
+      font-size: 0.74rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      text-align: center;
+      line-height: 1.3;
+    }
+    .btn-vm:hover { background: #22223a; }
+    .btn-vm.active-h { background: #0d2d3d; border-color: #2196F3; color: #2196F3; }
+    .btn-vm.active-v { background: #2d2700; border-color: #F0C337; color: #F0C337; }
+
+    /* ── Friction button ── */
+    .btn-friction {
+      width: 100%;
+      padding: 7px;
+      border-radius: 5px;
+      border: 1px solid #2a2a3e;
+      background: #1a1a2e;
+      color: #78909C;
+      font-size: 0.80rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s, border-color 0.15s;
+      margin-top: 5px;
+    }
+    .btn-friction.active { background: #3a1500; border-color: #FF5722; color: #FF5722; }
+
+    /* ── V-angle status badge ── */
+    .v-badge {
+      display: inline-block;
+      font-size: 0.70rem;
+      font-weight: 700;
+      border-radius: 4px;
+      padding: 1px 7px;
+      margin-left: 6px;
+    }
+    .v-badge.ok   { background: #1b3a1b; color: #4CAF50; }
+    .v-badge.warn { background: #3a2e00; color: #FFC107; }
+    .v-badge.bad  { background: #3a0800; color: #F44336; }
+
+    /* ── Safety factor bars ── */
+    .sf-bar-bg {
+      background: #1a1a2e;
+      border-radius: 3px;
+      height: 14px;
+      margin: 3px 0 5px;
+      overflow: hidden;
+      position: relative;
+    }
+    .sf-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.25s;
+    }
+    .sf-bar-txt {
+      position: absolute;
+      left: 5px;
+      top: 1px;
+      font-size: 0.68rem;
+      color: #ECEFF1;
+      pointer-events: none;
+    }
+
+    /* ── Safety rules ── */
+    .rule-line {
+      font-size: 0.74rem;
+      color: #4CAF50;
+      margin-bottom: 2px;
+      display: flex;
+      align-items: flex-start;
+      gap: 4px;
+    }
+
+    /* ── Controls (sliders) ── */
+    .controls {
+      width: 100%;
+      max-width: 1200px;
+      background: #16213e;
+      border: 1px solid #2a2a3e;
+      border-radius: 8px;
+      padding: 12px 22px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .slider-row {
+      display: grid;
+      grid-template-columns: 210px 1fr 130px;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .slider-label { font-size: 0.88rem; text-align: right; color: #ECEFF1; }
+
+    input[type="range"] { width: 100%; cursor: pointer; height: 4px; }
+    #slSpan  { accent-color: #00BCD4; }
+    #slSag   { accent-color: #FF5722; }
+    #slLoad  { accent-color: #FFC107; }
+    #slHA    { accent-color: #4CAF50; }
+    #slPos   { accent-color: #FFA726; }
+    #slDrop  { accent-color: #F0C337; }
+
+    .slider-val {
+      font-size: 0.90rem;
+      font-weight: bold;
+      font-variant-numeric: tabular-nums;
+    }
+    #valSpan  { color: #00BCD4; }
+    #valSag   { color: #FF5722; }
+    #valLoad  { color: #FFC107; }
+    #valHA    { color: #4CAF50; }
+    #valPos   { color: #FFA726; }
+    #valDrop  { color: #F0C337; }
+
+    .footer {
+      margin-top: 10px;
+      font-size: 0.73rem;
+      color: #ECEFF1;
+      opacity: 0.5;
+      font-style: italic;
+      text-align: center;
+      max-width: 1200px;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+<h1>FÍSICA DEL RESCATE &mdash; Sistema English Reeve</h1>
+
+<p class="warning-bar">
+  &Aacute;ngulo V &lt; 120&deg; &nbsp;|&nbsp;
+  Flecha m&aacute;nima recomendada &ge; 5 % del vano &nbsp;|&nbsp;
+  Belay e highline siempre independientes &nbsp;|&nbsp;
+  FS &ge; 15:1 para todas las l&iacute;neas
+</p>
+
+<div class="main-layout">
+
+  <!-- ── Scene canvas ── -->
+  <canvas id="cvScene" width="800" height="510"></canvas>
+
+  <!-- ── Info panel ── -->
+  <div class="right-panel">
+
+    <!-- System ID -->
+    <div class="panel-section">
+      <div class="panel-heading">Sistema English Reeve</div>
+      <div class="kv-row">
+        <span class="kv-key">Carga total</span>
+        <span class="kv-val danger" id="pvLoad">&mdash;</span>
+      </div>
+      <div class="kv-row">
+        <span class="kv-key">Vano A&ndash;B</span>
+        <span class="kv-val primary" id="pvSpan">&mdash;</span>
+      </div>
+      <div class="kv-row">
+        <span class="kv-key">Alt. anclaje A</span>
+        <span class="kv-val accent" id="pvHA">&mdash;</span>
+      </div>
+      <div class="kv-row">
+        <span class="kv-key">Flecha central</span>
+        <span class="kv-val rope" id="pvSag">&mdash;</span>
+      </div>
+      <div class="kv-row">
+        <span class="kv-key">Posici&oacute;n carriage</span>
+        <span class="kv-val info" id="pvPos">&mdash;</span>
+      </div>
+      <div class="kv-row">
+        <span class="kv-key">Profundidad cu&eacute;lgue</span>
+        <span class="kv-val gold" id="pvDrop">&mdash;</span>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- VM Horizontal buttons -->
+    <div class="panel-section">
+      <div class="panel-heading">VM Horizontal (haul line)</div>
+      <div class="btn-row">
+        <button class="btn-vm" id="bmh0" onclick="setMaH(0)">3:1<br><small>Z-rig</small></button>
+        <button class="btn-vm" id="bmh1" onclick="setMaH(1)">4:1<br><small>Compuesto</small></button>
+        <button class="btn-vm" id="bmh2" onclick="setMaH(2)">6:1<br><small>Compuesto</small></button>
+      </div>
+      <div class="kv-row">
+        <span class="kv-key">F &rarr; B (mover hacia B)</span>
+        <span class="kv-val info" id="pvFctrlB">&mdash;</span>
+      </div>
+      <div class="kv-row">
+        <span class="kv-key">F &rarr; A (mover hacia A)</span>
+        <span class="kv-val info" id="pvFctrlA">&mdash;</span>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- VM Vertical buttons -->
+    <div class="panel-section">
+      <div class="panel-heading gold">VM Vertical (izado / descenso)</div>
+      <div class="btn-row">
+        <button class="btn-vm" id="bmv0" onclick="setMaV(0)">2:1<br><small>Simple</small></button>
+        <button class="btn-vm" id="bmv1" onclick="setMaV(1)">3:1<br><small>Z-rig</small></button>
+        <button class="btn-vm" id="bmv2" onclick="setMaV(2)">4:1<br><small>Compuesto</small></button>
+      </div>
+      <div class="kv-row">
+        <span class="kv-key">F para izar / descender</span>
+        <span class="kv-val gold" id="pvFvert">&mdash;</span>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Highline tensions -->
+    <div class="panel-section">
+      <div class="panel-heading warn">Tensiones highline</div>
+      <div class="kv-row">
+        <span class="kv-key">T_A (tramo A&ndash;P)</span>
+        <span class="kv-val warning" id="pvTA">&mdash;</span>
+      </div>
+      <div class="kv-row">
+        <span class="kv-key">T_B (tramo P&ndash;B)</span>
+        <span class="kv-val warning" id="pvTB">&mdash;</span>
+      </div>
+      <div class="kv-row">
+        <span class="kv-key">Long. total cuerda</span>
+        <span class="kv-val" id="pvS">&mdash;</span>
+      </div>
+      <div class="kv-row" style="align-items:center;">
+        <span class="kv-key">&Aacute;ngulo V</span>
+        <span>
+          <span class="kv-val" id="pvVangle">&mdash;</span>
+          <span class="v-badge ok" id="vBadge">OK</span>
+        </span>
+      </div>
+      <div id="vWarnMsg" style="display:none;font-size:0.74rem;color:#F44336;margin-top:3px;"></div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Anchor loads -->
+    <div class="panel-section">
+      <div class="panel-heading">Cargas en anclajes</div>
+      <div class="kv-row">
+        <span class="kv-key">Anclaje A</span>
+        <span class="kv-val warning" id="pvFancA">&mdash;</span>
+      </div>
+      <div class="kv-row">
+        <span class="kv-key">Anclaje B</span>
+        <span class="kv-val warning" id="pvFancB">&mdash;</span>
+      </div>
+      <div class="kv-row">
+        <span class="kv-key">Belay (peor caso)</span>
+        <span class="kv-val accent" id="pvFbelay">&mdash;</span>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Safety factors -->
+    <div class="panel-section">
+      <div class="panel-heading">Factores de seguridad <small style="color:#78909C;font-weight:400">(MBS 30 kN)</small></div>
+      <div class="kv-row">
+        <span class="kv-key">FS highline T_A</span>
+        <span class="kv-val" id="pvSFA">&mdash;</span>
+      </div>
+      <div class="sf-bar-bg"><div class="sf-bar-fill" id="sfBarA"></div><span class="sf-bar-txt" id="sfTxtA"></span></div>
+      <div class="kv-row">
+        <span class="kv-key">FS highline T_B</span>
+        <span class="kv-val" id="pvSFB">&mdash;</span>
+      </div>
+      <div class="sf-bar-bg"><div class="sf-bar-fill" id="sfBarB"></div><span class="sf-bar-txt" id="sfTxtB"></span></div>
+      <div class="kv-row">
+        <span class="kv-key">FS belay</span>
+        <span class="kv-val" id="pvSFbl">&mdash;</span>
+      </div>
+      <div class="sf-bar-bg"><div class="sf-bar-fill" id="sfBarBl"></div><span class="sf-bar-txt" id="sfTxtBl"></span></div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Safety rules -->
+    <div class="panel-section">
+      <div class="panel-heading">Reglas de seguridad</div>
+      <div class="rule-line"><span>&#10003;</span><span>Belay e highline siempre independientes</span></div>
+      <div class="rule-line"><span>&#10003;</span><span>FS &ge; 15:1 &nbsp;&bull;&nbsp; &Aacute;ngulo V &lt; 120&deg;</span></div>
+      <div class="rule-line"><span>&#10003;</span><span>PCD activo &mdash; impide retroceso</span></div>
+      <div class="rule-line"><span>&#10003;</span><span>VM vertical independiente del horizontal</span></div>
+    </div>
+
+    <!-- Friction toggle -->
+    <button class="btn-friction" id="btnFriction" onclick="toggleFriction()">
+      [F] Fricci&oacute;n en poleas: <span id="frState">OFF</span>
+    </button>
+
+  </div><!-- .right-panel -->
+</div><!-- .main-layout -->
+
+<!-- ── Sliders ── -->
+<div class="controls">
+  <div class="slider-row">
+    <span class="slider-label">Vano A&ndash;B (m)</span>
+    <input type="range" id="slSpan" min="20" max="100" value="40" step="1">
+    <span class="slider-val" id="valSpan">40 m</span>
+  </div>
+  <div class="slider-row">
+    <span class="slider-label">Flecha central (%)</span>
+    <input type="range" id="slSag" min="0.5" max="20" value="5" step="0.1">
+    <span class="slider-val" id="valSag">5.0 %</span>
+  </div>
+  <div class="slider-row">
+    <span class="slider-label">Carga total (kg)</span>
+    <input type="range" id="slLoad" min="40" max="400" value="120" step="1">
+    <span class="slider-val" id="valLoad">120 kg</span>
+  </div>
+  <div class="slider-row">
+    <span class="slider-label">Alt. anclaje A (m)</span>
+    <input type="range" id="slHA" min="0" max="30" value="8" step="0.1">
+    <span class="slider-val" id="valHA">8.0 m</span>
+  </div>
+  <div class="slider-row">
+    <span class="slider-label">Posici&oacute;n carriage (%)</span>
+    <input type="range" id="slPos" min="1" max="99" value="50" step="0.5">
+    <span class="slider-val" id="valPos">50.0 %</span>
+  </div>
+  <div class="slider-row">
+    <span class="slider-label">Profundidad cu&eacute;lgue (m)</span>
+    <input type="range" id="slDrop" min="1" max="50" value="8" step="0.5">
+    <span class="slider-val" id="valDrop">8.0 m</span>
+  </div>
+</div>
+
+<p class="footer">
+  Highline inextensible &mdash; longitud fija dada por flecha central &nbsp;|&nbsp;
+  Equilibrio est&aacute;tico en el carriage &nbsp;|&nbsp;
+  VM horizontal: fuerza para mover el carriage a lo largo del vano &nbsp;|&nbsp;
+  VM vertical: fuerza independiente para izar/descender la v&iacute;ctima
+</p>
+
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════════════════════════════
+//  Constantes físicas
+// ══════════════════════════════════════════════════════════════════════
+const G          = 9.81;
+const ROPE_MBS   = 30.0;   // kN  MBS cuerda estática 11 mm
+const PULLEY_EFF = 0.92;   // eficiencia por polea
+const FRICTION_K = 0.08;   // coeficiente fricción carriage
+const V_WARN     = 120;    // ángulo V de advertencia (°)
+const V_DANGER   = 150;    // ángulo V peligroso (°)
+
+const MA_HORIZ = [
+  { label: '3:1  Z-rig',     ma: 3, pulleys: 2 },
+  { label: '4:1  Compuesto', ma: 4, pulleys: 3 },
+  { label: '6:1  Compuesto', ma: 6, pulleys: 4 },
+];
+const MA_VERT = [
+  { label: '2:1  Simple',    ma: 2, pulleys: 1 },
+  { label: '3:1  Z-rig',     ma: 3, pulleys: 2 },
+  { label: '4:1  Compuesto', ma: 4, pulleys: 3 },
+];
+
+// ── Paleta de colores (coincide con config.py) ────────────────────────
+const CLR = {
+  bg:        '#0f0f1a',
+  panel:     '#16213e',
+  primary:   '#00BCD4',
+  secondary: '#FF5722',
+  accent:    '#4CAF50',
+  warning:   '#FFC107',
+  danger:    '#F44336',
+  info:      '#2196F3',
+  text:      '#ECEFF1',
+  grid:      '#2a2a3e',
+  rope:      '#FFA726',
+  anchor:    '#78909C',
+  gold:      '#F0C337',
+};
+
+// ── Geometría de la escena (espejo de los valores del Python) ─────────
+const ANC_A_X   = 70;
+const ANC_B_X   = 730;
+const SPAN_SCR  = ANC_B_X - ANC_A_X;   // 660 px ≡ span_m metros
+const BASE_Y    = 265;   // Y del nivel de referencia (anclaje B)
+const GROUND_Y  = 475;   // Y del suelo / fondo del cañón
+const CARRIAGE_R = 12;
+const HOOK_LEN   = 26;
+
+// ── Canvas ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('cvScene');
+const ctx    = canvas.getContext('2d');
+
+// ══════════════════════════════════════════════════════════════════════
+//  Estado del sistema
+// ══════════════════════════════════════════════════════════════════════
+let st = {
+  span_m:      40.0,
+  h_A:          8.0,
+  sag_pct:      5.0,
+  pos_pct:     50.0,
+  load_kg:    120,
+  ma_idx:       1,   // VM horizontal: 0=3:1, 1=4:1, 2=6:1
+  ma_vert_idx:  1,   // VM vertical:   0=2:1, 1=3:1, 2=4:1
+  friction:   false,
+  load_drop_m:  8.0,
+};
+
+// ══════════════════════════════════════════════════════════════════════
+//  Física (portada directamente desde el Python)
+// ══════════════════════════════════════════════════════════════════════
+
+/**
+ * Longitud de la cuerda a partir de la flecha en el punto medio del vano.
+ */
+function ropeLength(span_m, h_A, h_B, sag_pct) {
+  const x_mid    = span_m / 2.0;
+  const y_ab_mid = h_A + (h_B - h_A) * x_mid / span_m;
+  const d        = sag_pct / 100.0 * span_m;
+  const y_P_mid  = y_ab_mid - d;
+  return (Math.sqrt(x_mid ** 2 + (y_P_mid - h_A) ** 2) +
+          Math.sqrt(x_mid ** 2 + (y_P_mid - h_B) ** 2));
+}
+
+/**
+ * Bisección (64 iter.): halla y_P tal que |AP| + |PB| = S.
+ */
+function solveLoadY(x_m, L, h_A, h_B, S) {
+  const y_ab = h_A + (h_B - h_A) * x_m / L;
+  let y_hi = y_ab, y_lo = y_ab - S;
+  for (let i = 0; i < 64; i++) {
+    const mid = (y_hi + y_lo) * 0.5;
+    const f   = (Math.sqrt(x_m ** 2       + (h_A - mid) ** 2) +
+                 Math.sqrt((L - x_m) ** 2 + (h_B - mid) ** 2) - S);
+    if (f < 0) y_hi = mid;
+    else       y_lo = mid;
+  }
+  return (y_hi + y_lo) * 0.5;
+}
+
+/**
+ * Equilibrio estático en el carriage P.
+ * Devuelve tensiones, ángulos y vectores unitarios.
+ */
+function computeForces(x_m, L, h_A, h_B, y_P, W_kN) {
+  x_m = Math.max(1e-3, Math.min(x_m, L - 1e-3));
+
+  const len_PA = Math.sqrt(x_m ** 2       + (y_P - h_A) ** 2);
+  const len_PB = Math.sqrt((L - x_m) ** 2 + (y_P - h_B) ** 2);
+  const sag_A  = h_A - y_P;
+  const sag_B  = h_B - y_P;
+
+  const denom = (L - x_m) * sag_A / x_m + sag_B;
+  let T_A, T_B;
+  if (Math.abs(denom) < 1e-9) {
+    T_A = T_B = W_kN * 50.0;
+  } else {
+    T_B = W_kN * len_PB / denom;
+    T_A = T_B * (L - x_m) * len_PA / (x_m * len_PB);
+  }
+
+  const uA_x = -x_m       / len_PA;
+  const uA_y =  sag_A     / len_PA;
+  const uB_x =  (L - x_m) / len_PB;
+  const uB_y =  sag_B     / len_PB;
+
+  const dot     = Math.max(-1.0, Math.min(1.0, uA_x * uB_x + uA_y * uB_y));
+  const v_angle = Math.acos(dot) * 180 / Math.PI;
+  const alpha_A = Math.atan2(sag_A, x_m)       * 180 / Math.PI;
+  const alpha_B = Math.atan2(sag_B, L - x_m)   * 180 / Math.PI;
+
+  return { T_A, T_B, v_angle, alpha_A, alpha_B,
+           len_PA, len_PB, uA: [uA_x, uA_y], uB: [uB_x, uB_y] };
+}
+
+/**
+ * Cálculo completo de la física del sistema.
+ */
+function computePhysics() {
+  const L    = st.span_m;
+  const h_A  = st.h_A;
+  const h_B  = 0.0;
+  const x_m  = Math.max(1e-3, Math.min(st.pos_pct / 100.0 * L, L - 1e-3));
+  const W_kN = st.load_kg * G / 1000.0;
+
+  const cfgH = MA_HORIZ[st.ma_idx];
+  const cfgV = MA_VERT[st.ma_vert_idx];
+  const ma_h = cfgH.ma, n_h = cfgH.pulleys;
+  const ma_v = cfgV.ma, n_v = cfgV.pulleys;
+
+  const S   = ropeLength(L, h_A, h_B, st.sag_pct);
+  const y_P = solveLoadY(x_m, L, h_A, h_B, S);
+  const f   = computeForces(x_m, L, h_A, h_B, y_P, W_kN);
+
+  const eff_h = st.friction ? Math.pow(PULLEY_EFF, n_h) : 1.0;
+  const eff_v = st.friction ? Math.pow(PULLEY_EFF, n_v) : 1.0;
+
+  const sin_A  = Math.sin(f.alpha_A * Math.PI / 180);
+  const sin_B  = Math.sin(f.alpha_B * Math.PI / 180);
+  const cos_A  = Math.cos(f.alpha_A * Math.PI / 180);
+  const cos_B  = Math.cos(f.alpha_B * Math.PI / 180);
+  const fric_A = st.friction ? FRICTION_K * W_kN * cos_A : 0.0;
+  const fric_B = st.friction ? FRICTION_K * W_kN * cos_B : 0.0;
+
+  const F_ctrl_B = (W_kN * sin_B + fric_B) / (ma_h * eff_h);
+  const F_ctrl_A = (W_kN * sin_A + fric_A) / (ma_h * eff_h);
+  const F_vert   = W_kN / (ma_v * eff_v);
+
+  const F_anc_A = f.T_A;
+  const F_anc_B = f.T_B + F_ctrl_B * eff_h * ma_h / 2.0;
+  const F_belay = W_kN;
+
+  const SF_A  = f.T_A  > 0.01 ? ROPE_MBS / f.T_A  : 999.0;
+  const SF_B  = f.T_B  > 0.01 ? ROPE_MBS / f.T_B  : 999.0;
+  const SF_bl = ROPE_MBS / F_belay;
+
+  return {
+    W_kN, x_m, y_P, S,
+    T_A: f.T_A, T_B: f.T_B,
+    v_angle: f.v_angle, alpha_A: f.alpha_A, alpha_B: f.alpha_B,
+    uA: f.uA, uB: f.uB, len_PA: f.len_PA, len_PB: f.len_PB,
+    F_ctrl_A, F_ctrl_B, F_vert,
+    F_anc_A, F_anc_B, F_belay,
+    SF_A, SF_B, SF_bl,
+    eff_h, eff_v, ma_h, ma_v, n_h, n_v,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Utilidades de dibujo
+// ══════════════════════════════════════════════════════════════════════
+
+/** Conversión metros → píxeles de pantalla. */
+function toScr(x_m, y_m) {
+  const ppm = SPAN_SCR / st.span_m;
+  return [Math.round(ANC_A_X + x_m * ppm), Math.round(BASE_Y - y_m * ppm)];
+}
+
+/** Flecha vectorial desde (x1,y1) con desplazamiento (dx,dy). */
+function drawArrow(x1, y1, dx, dy, color, lw = 2) {
+  const x2 = x1 + dx, y2 = y1 + dy;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle   = color;
+  ctx.lineWidth   = lw;
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  if (len > 4) {
+    const ux = dx / len, uy = dy / len;
+    const px = -uy, py = ux;
+    const hs = 8;
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - ux * hs + px * hs * 0.5, y2 - uy * hs + py * hs * 0.5);
+    ctx.lineTo(x2 - ux * hs - px * hs * 0.5, y2 - uy * hs - py * hs * 0.5);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** Polea (círculo de redirección). */
+function drawPulley(x, y, r = 7, color = CLR.primary) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 2;
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(x, y, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/** Rectángulo redondeado (solo path — llamar fill/stroke después). */
+function rrect(x, y, w, h, r = 5) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y,     x + w, y + r,     r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x,     y + h, x,      y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y,     x + r, y,             r);
+  ctx.closePath();
+}
+
+/** Anclaje en diamante con perno y placa. */
+function drawAnchor(x, y, label, color) {
+  const sz = 11;
+  ctx.save();
+  ctx.fillStyle   = color;
+  ctx.strokeStyle = 'rgba(255,255,255,0.75)';
+  ctx.lineWidth   = 2;
+  ctx.beginPath();
+  ctx.moveTo(x,      y - sz);
+  ctx.lineTo(x + sz, y);
+  ctx.lineTo(x,      y + sz);
+  ctx.lineTo(x - sz, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  // Perno
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = 3;
+  ctx.beginPath();
+  ctx.moveTo(x, y - sz);
+  ctx.lineTo(x, y - sz - 10);
+  ctx.stroke();
+  // Placa
+  ctx.fillStyle = color;
+  ctx.fillRect(x - 14, y - sz - 18, 28, 8);
+  // Etiqueta
+  ctx.fillStyle    = color;
+  ctx.font         = '10px "Segoe UI", sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(label, x, y - sz - 20);
+  ctx.restore();
+}
+
+/** Carriage: dos poleas + barra + gancho. */
+function drawCarriage(x, y) {
+  ctx.save();
+  ctx.strokeStyle = CLR.primary;
+  ctx.lineWidth   = 3;
+  // Dos poleas
+  ctx.beginPath(); ctx.arc(x - 9, y, CARRIAGE_R, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.arc(x + 9, y, CARRIAGE_R, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = CLR.primary;
+  ctx.beginPath(); ctx.arc(x - 9, y, 3, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + 9, y, 3, 0, Math.PI * 2); ctx.fill();
+  // Barra conectora
+  ctx.fillRect(x - 9, y + CARRIAGE_R - 1, 18, 7);
+  // Gancho
+  ctx.strokeStyle = CLR.primary;
+  ctx.lineWidth   = 3;
+  ctx.beginPath();
+  ctx.moveTo(x, y + CARRIAGE_R + 6);
+  ctx.lineTo(x, y + HOOK_LEN);
+  ctx.stroke();
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(x, y + HOOK_LEN, 5, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/** Camilla con víctima. */
+function drawLoadBox(x, y, kg) {
+  const w = 72, h = 50;
+  ctx.save();
+  ctx.fillStyle = 'rgb(100,25,25)';
+  rrect(x - w / 2, y, w, h, 5);
+  ctx.fill();
+  ctx.strokeStyle = CLR.danger;
+  ctx.lineWidth   = 2;
+  ctx.stroke();
+  // Cruz médica
+  const cx = x, cy = y + h / 2;
+  ctx.fillStyle = CLR.text;
+  ctx.fillRect(cx - 11, cy - 3, 22, 6);
+  ctx.fillRect(cx - 3, cy - 11, 6, 22);
+  // Etiqueta peso
+  ctx.fillStyle    = CLR.warning;
+  ctx.font         = '10px "Segoe UI", sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText(`${kg} kg`, x, y + h + 4);
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Dibujo de la escena principal
+// ══════════════════════════════════════════════════════════════════════
+
+function drawScene(ph) {
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = CLR.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  const ppm = SPAN_SCR / st.span_m;
+
+  // Posiciones en pantalla
+  const [ax, ay] = toScr(0,          st.h_A);
+  const [bx, by] = toScr(st.span_m,  0);
+  const [px, py] = toScr(ph.x_m,     ph.y_P);
+
+  // Posición víctima (profundidad de cuelgue)
+  const drop_px  = st.load_drop_m * ppm;
+  const hook_y   = py + HOOK_LEN;
+  const ly_raw   = hook_y + drop_px;
+  const at_ground = ly_raw > GROUND_Y - 62;
+  const ly       = Math.min(ly_raw, GROUND_Y - 62);
+
+  // ── Terreno y cañón ───────────────────────────────────────────────
+
+  // Pared izquierda (anclaje A)
+  ctx.fillStyle = 'rgb(38,48,62)';
+  ctx.beginPath();
+  ctx.moveTo(0,       ay + 14);
+  ctx.lineTo(ax + 36, ay + 14);
+  ctx.lineTo(ax + 42, GROUND_Y);
+  ctx.lineTo(0,       GROUND_Y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgb(80,95,115)';
+  ctx.lineWidth   = 2;
+  ctx.beginPath();
+  ctx.moveTo(0,       ay + 14);
+  ctx.lineTo(ax + 36, ay + 14);
+  ctx.stroke();
+
+  // Pared derecha (anclaje B)
+  ctx.fillStyle = 'rgb(38,48,62)';
+  ctx.beginPath();
+  ctx.moveTo(bx - 36, by + 14);
+  ctx.lineTo(W,       by + 14);
+  ctx.lineTo(W,       GROUND_Y);
+  ctx.lineTo(bx - 42, GROUND_Y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = 'rgb(80,95,115)';
+  ctx.lineWidth   = 2;
+  ctx.beginPath();
+  ctx.moveTo(bx - 36, by + 14);
+  ctx.lineTo(W,       by + 14);
+  ctx.stroke();
+
+  // Suelo del cañón
+  ctx.strokeStyle = 'rgb(75,88,108)';
+  ctx.lineWidth   = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND_Y);
+  ctx.lineTo(W, GROUND_Y);
+  ctx.stroke();
+  // Trama diagonal del suelo
+  ctx.strokeStyle = 'rgb(55,65,82)';
+  ctx.lineWidth   = 1;
+  for (let hx = 6; hx < W; hx += 22) {
+    ctx.beginPath();
+    ctx.moveTo(hx,      GROUND_Y + 1);
+    ctx.lineTo(hx + 14, GROUND_Y + 13);
+    ctx.stroke();
+  }
+  ctx.save();
+  ctx.fillStyle    = 'rgb(65,78,98)';
+  ctx.font         = '11px "Segoe UI", sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('CAÑÓN / ABISMO', W / 2, GROUND_Y + 3);
+  ctx.restore();
+
+  // Escala de altura A (si h_A > 0)
+  if (st.h_A > 0.3 && (ay - by) > 8) {
+    ctx.save();
+    ctx.strokeStyle = CLR.grid;
+    ctx.lineWidth   = 1;
+    ctx.beginPath(); ctx.moveTo(ax - 28, ay); ctx.lineTo(ax - 28, by); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ax - 33, ay); ctx.lineTo(ax - 23, ay); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(ax - 33, by); ctx.lineTo(ax - 23, by); ctx.stroke();
+    ctx.fillStyle    = CLR.grid;
+    ctx.font         = '10px "Segoe UI", sans-serif';
+    ctx.textAlign    = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${st.h_A.toFixed(1)} m`, ax - 36, (ay + by) / 2);
+    ctx.restore();
+  }
+
+  // ── Belay line (verde) ─────────────────────────────────────────────
+  const bel_off = -20;
+  ctx.save();
+  ctx.strokeStyle = CLR.accent;
+  ctx.lineWidth   = 2;
+  ctx.beginPath();
+  ctx.moveTo(ax + 5, ay);
+  ctx.lineTo(px + bel_off, py);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(px + bel_off, py);
+  ctx.lineTo(px + bel_off, ly);
+  ctx.stroke();
+  ctx.fillStyle = CLR.accent;
+  ctx.beginPath();
+  ctx.arc(px + bel_off, py, 4, 0, Math.PI * 2);
+  ctx.fill();
+  // Etiqueta Belay
+  const mid_bx = (ax + 5 + px + bel_off) / 2;
+  const mid_by = (ay + py) / 2;
+  ctx.fillStyle    = CLR.accent;
+  ctx.font         = '10px "Segoe UI", sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('Belay', mid_bx, mid_by - 2);
+  ctx.restore();
+
+  // ── Highline — tramos A-P y P-B ────────────────────────────────────
+  ctx.save();
+  ctx.strokeStyle = CLR.rope;
+  ctx.lineWidth   = 5;
+  ctx.lineCap     = 'round';
+  ctx.beginPath();
+  ctx.moveTo(ax, ay);
+  ctx.lineTo(px, py);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(px, py);
+  ctx.lineTo(bx, by);
+  ctx.stroke();
+  ctx.restore();
+
+  // Longitudes de tramo
+  ctx.save();
+  ctx.fillStyle    = CLR.rope;
+  ctx.font         = '10px "Segoe UI", sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(`${ph.len_PA.toFixed(1)} m`, (ax + px) / 2, (ay + py) / 2 - 4);
+  ctx.fillText(`${ph.len_PB.toFixed(1)} m`, (px + bx) / 2, (py + by) / 2 - 4);
+  ctx.restore();
+
+  // ── Cuerda de control horizontal (azul, hacia B) ───────────────────
+  const ctrl_end_x = bx + 8;
+  const ctrl_end_y = by - 30;
+  ctx.save();
+  ctx.strokeStyle = CLR.info;
+  ctx.lineWidth   = 2;
+  ctx.beginPath();
+  ctx.moveTo(px, py);
+  ctx.lineTo(ctrl_end_x, ctrl_end_y);
+  ctx.stroke();
+  drawPulley(ctrl_end_x, ctrl_end_y, 6, CLR.info);
+  ctx.fillStyle    = CLR.info;
+  ctx.font         = '10px "Segoe UI", sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(`VM ${MA_HORIZ[st.ma_idx].label.split(' ')[0]}`, ctrl_end_x, ctrl_end_y - 6);
+  ctx.restore();
+
+  // ── Cuerda vertical de izado/descenso (dorado) ────────────────────
+  const haul_end_x = bx + 8;
+  const haul_end_y = by + 22;
+  ctx.save();
+  ctx.strokeStyle = CLR.gold;
+  ctx.lineWidth   = 4;
+  ctx.beginPath();
+  ctx.moveTo(px, hook_y);
+  ctx.lineTo(px, ly);
+  ctx.stroke();
+  drawPulley(px, hook_y, 7, CLR.gold);
+  ctx.strokeStyle = CLR.gold;
+  ctx.lineWidth   = 2;
+  ctx.beginPath();
+  ctx.moveTo(px, hook_y);
+  ctx.lineTo(haul_end_x, haul_end_y);
+  ctx.stroke();
+  drawPulley(haul_end_x, haul_end_y, 6, CLR.gold);
+  ctx.fillStyle    = CLR.gold;
+  ctx.font         = '10px "Segoe UI", sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText(`VM ${MA_VERT[st.ma_vert_idx].label.split(' ')[0]}`, haul_end_x, haul_end_y + 8);
+  // Etiqueta profundidad
+  if (drop_px > 30) {
+    ctx.fillStyle    = CLR.gold;
+    ctx.textAlign    = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`${st.load_drop_m.toFixed(1)} m`, px + 10, (hook_y + ly) / 2);
+  }
+  ctx.restore();
+
+  // Aviso suelo
+  if (at_ground) {
+    ctx.save();
+    ctx.fillStyle    = CLR.danger;
+    ctx.font         = 'bold 11px "Segoe UI", sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('SUELO', px, ly - 2);
+    ctx.restore();
+  }
+
+  // ── Anclajes ──────────────────────────────────────────────────────
+  drawAnchor(ax, ay, 'ANCLAJE A', CLR.warning);
+  drawAnchor(bx, by, 'ANCLAJE B', CLR.info);
+
+  // ── Carriage ──────────────────────────────────────────────────────
+  drawCarriage(px, py);
+
+  // ── Camilla con víctima ───────────────────────────────────────────
+  drawLoadBox(px, ly, st.load_kg);
+
+  // ── Vectores de fuerza ────────────────────────────────────────────
+  const scale = 24.0 / Math.max(ph.W_kN, 0.1);
+
+  // Peso W (hacia abajo desde la caja)
+  const wScale = ph.W_kN * scale * 1.4;
+  drawArrow(px, ly + 25, 0, wScale, CLR.danger, 3);
+  ctx.save();
+  ctx.fillStyle    = CLR.danger;
+  ctx.font         = 'bold 10px "Segoe UI", sans-serif';
+  ctx.textAlign    = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`${ph.W_kN.toFixed(2)} kN`, px + 6, ly + 25 + wScale * 0.5);
+  ctx.restore();
+
+  // Tensión T_A
+  const [uAx, uAy] = ph.uA;
+  const arr_A = Math.min(ph.T_A * scale, 105);
+  drawArrow(px, py, uAx * arr_A, -uAy * arr_A, CLR.warning, 3);
+  ctx.save();
+  ctx.fillStyle    = CLR.warning;
+  ctx.font         = 'bold 9px "Segoe UI", sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(`T_A=${ph.T_A.toFixed(1)}`,
+    px + uAx * arr_A * 0.55, py - uAy * arr_A * 0.55 - 2);
+  ctx.restore();
+
+  // Tensión T_B
+  const [uBx, uBy] = ph.uB;
+  const arr_B = Math.min(ph.T_B * scale, 105);
+  drawArrow(px, py, uBx * arr_B, -uBy * arr_B, CLR.warning, 3);
+  ctx.save();
+  ctx.fillStyle    = CLR.warning;
+  ctx.font         = 'bold 9px "Segoe UI", sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(`T_B=${ph.T_B.toFixed(1)}`,
+    px + uBx * arr_B * 0.55, py - uBy * arr_B * 0.55 - 2);
+  ctx.restore();
+
+  // ── Indicador ángulo V ────────────────────────────────────────────
+  const v = ph.v_angle;
+  const v_col = v < V_WARN ? CLR.accent : v < V_DANGER ? CLR.warning : CLR.danger;
+  ctx.save();
+  ctx.strokeStyle = v_col;
+  ctx.lineWidth   = 2;
+  ctx.beginPath();
+  ctx.arc(px, py, 24, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.fillStyle    = v_col;
+  ctx.font         = 'bold 10px "Segoe UI", sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText(`V=${v.toFixed(0)}°`, px, py - 26);
+  ctx.restore();
+
+  // ── Escala gráfica ────────────────────────────────────────────────
+  const scale_px = Math.round(10.0 * ppm);
+  const sx0 = ANC_A_X, sy0 = GROUND_Y + 18;
+  ctx.save();
+  ctx.strokeStyle = CLR.anchor;
+  ctx.lineWidth   = 2;
+  ctx.beginPath(); ctx.moveTo(sx0, sy0); ctx.lineTo(sx0 + scale_px, sy0); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(sx0, sy0 - 4); ctx.lineTo(sx0, sy0 + 4); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(sx0 + scale_px, sy0 - 4); ctx.lineTo(sx0 + scale_px, sy0 + 4); ctx.stroke();
+  ctx.fillStyle    = CLR.anchor;
+  ctx.font         = '10px "Segoe UI", sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('10 m', sx0 + scale_px / 2, sy0 + 5);
+  ctx.restore();
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Actualización del panel DOM
+// ══════════════════════════════════════════════════════════════════════
+
+function sfColor(sf) {
+  return sf >= 15.0 ? CLR.accent : sf >= 10.0 ? CLR.warning : CLR.danger;
+}
+
+/** Actualiza la barra de factor de seguridad. */
+function updateSfBar(fillId, txtId, sf) {
+  const fill = document.getElementById(fillId);
+  const txt  = document.getElementById(txtId);
+  // Escala: FS 0→30 = 0→100% (30:1 es un FS excelente)
+  const pct  = Math.min(sf / 30.0, 1.0) * 100;
+  const col  = sfColor(sf);
+  fill.style.width      = pct.toFixed(1) + '%';
+  fill.style.background = col;
+  txt.textContent       = `FS ${sf.toFixed(1)}:1`;
+  txt.style.color       = col;
+}
+
+function $set(id, txt, cls) {
+  const el = document.getElementById(id);
+  el.textContent = txt;
+  if (cls) el.className = `kv-val ${cls}`;
+}
+
+function updatePanel(ph) {
+  // System ID
+  $set('pvLoad', `${st.load_kg} kg = ${ph.W_kN.toFixed(2)} kN`, 'danger');
+  $set('pvSpan', `${st.span_m.toFixed(0)} m`, 'primary');
+  $set('pvHA',   `${st.h_A.toFixed(1)} m`, 'accent');
+  $set('pvSag',  `${st.sag_pct.toFixed(1)}%  (${(st.sag_pct / 100 * st.span_m).toFixed(1)} m)`, 'rope');
+  $set('pvPos',  `${st.pos_pct.toFixed(1)}%  (${ph.x_m.toFixed(1)} m)`, 'info');
+  $set('pvDrop', `${st.load_drop_m.toFixed(1)} m`, 'gold');
+
+  // VM controls
+  const effH_s = st.friction ? `ef. ${(ph.eff_h * 100).toFixed(0)}%` : 'ideal';
+  const effV_s = st.friction ? `ef. ${(ph.eff_v * 100).toFixed(0)}%` : 'ideal';
+  $set('pvFctrlB', `${ph.F_ctrl_B.toFixed(2)} kN  (${(ph.F_ctrl_B * 1000 / G).toFixed(0)} kg)  ${effH_s}`, 'info');
+  $set('pvFctrlA', `${ph.F_ctrl_A.toFixed(2)} kN  (${(ph.F_ctrl_A * 1000 / G).toFixed(0)} kg)  ${effH_s}`, 'info');
+  $set('pvFvert',  `${ph.F_vert.toFixed(2)} kN  (${(ph.F_vert * 1000 / G).toFixed(0)} kg)  ${effV_s}`, 'gold');
+
+  // Highline tensions
+  $set('pvTA', `${ph.T_A.toFixed(2)} kN`, 'warning');
+  $set('pvTB', `${ph.T_B.toFixed(2)} kN`, 'warning');
+  $set('pvS',  `${ph.S.toFixed(2)} m`);
+
+  const v = ph.v_angle;
+  const vEl = document.getElementById('pvVangle');
+  vEl.textContent = `${v.toFixed(1)}°`;
+  vEl.className   = `kv-val ${v < V_WARN ? 'accent' : v < V_DANGER ? 'warning' : 'danger'}`;
+
+  const badge = document.getElementById('vBadge');
+  const warnMsg = document.getElementById('vWarnMsg');
+  if (v >= V_DANGER) {
+    badge.className = 'v-badge bad';
+    badge.textContent = 'PELIGROSO';
+    warnMsg.style.display = '';
+    warnMsg.textContent = '⚠ Aumentar la flecha de la highline';
+  } else if (v >= V_WARN) {
+    badge.className = 'v-badge warn';
+    badge.textContent = 'PRECAUCIÓN';
+    warnMsg.style.display = '';
+    warnMsg.textContent = '! Ángulo elevado — controlar';
+  } else {
+    badge.className = 'v-badge ok';
+    badge.textContent = 'OK';
+    warnMsg.style.display = 'none';
+  }
+
+  // Anchor loads
+  $set('pvFancA', `${ph.F_anc_A.toFixed(2)} kN`, 'warning');
+  $set('pvFancB', `${ph.F_anc_B.toFixed(2)} kN`, 'warning');
+  $set('pvFbelay', `${ph.F_belay.toFixed(2)} kN`, 'accent');
+
+  // Safety factors
+  const sfAcl  = sfColor(ph.SF_A);
+  const sfBcl  = sfColor(ph.SF_B);
+  const sfBlcl = sfColor(ph.SF_bl);
+  const sfAel  = document.getElementById('pvSFA');
+  sfAel.textContent = `${ph.SF_A.toFixed(1)}:1`;
+  sfAel.style.color = sfAcl;
+  updateSfBar('sfBarA', 'sfTxtA', ph.SF_A);
+
+  const sfBel = document.getElementById('pvSFB');
+  sfBel.textContent = `${ph.SF_B.toFixed(1)}:1`;
+  sfBel.style.color = sfBcl;
+  updateSfBar('sfBarB', 'sfTxtB', ph.SF_B);
+
+  const sfBlEl = document.getElementById('pvSFbl');
+  sfBlEl.textContent = `${ph.SF_bl.toFixed(1)}:1`;
+  sfBlEl.style.color = sfBlcl;
+  updateSfBar('sfBarBl', 'sfTxtBl', ph.SF_bl);
+
+  // Friction button
+  document.getElementById('frState').textContent = st.friction ? 'ON' : 'OFF';
+  document.getElementById('btnFriction').classList.toggle('active', st.friction);
+}
+
+/** Actualiza las clases CSS de los botones VM activos. */
+function refreshVmButtons() {
+  for (let i = 0; i < 3; i++) {
+    document.getElementById(`bmh${i}`).className =
+      'btn-vm' + (i === st.ma_idx      ? ' active-h' : '');
+    document.getElementById(`bmv${i}`).className =
+      'btn-vm' + (i === st.ma_vert_idx ? ' active-v' : '');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Bucle de actualización principal
+// ══════════════════════════════════════════════════════════════════════
+
+function update() {
+  const ph = computePhysics();
+  drawScene(ph);
+  updatePanel(ph);
+}
+
+// ══════════════════════════════════════════════════════════════════════
+//  Controles
+// ══════════════════════════════════════════════════════════════════════
+
+function setMaH(idx) {
+  st.ma_idx = idx;
+  refreshVmButtons();
+  update();
+}
+
+function setMaV(idx) {
+  st.ma_vert_idx = idx;
+  refreshVmButtons();
+  update();
+}
+
+function toggleFriction() {
+  st.friction = !st.friction;
+  update();
+}
+
+// ── Sliders ──────────────────────────────────────────────────────────
+const sliders = [
+  { id: 'slSpan', val: 'valSpan', key: 'span_m',      fmt: v => `${v} m`         },
+  { id: 'slSag',  val: 'valSag',  key: 'sag_pct',     fmt: v => `${(+v).toFixed(1)} %`  },
+  { id: 'slLoad', val: 'valLoad', key: 'load_kg',     fmt: v => `${v} kg`        },
+  { id: 'slHA',   val: 'valHA',   key: 'h_A',         fmt: v => `${(+v).toFixed(1)} m`  },
+  { id: 'slPos',  val: 'valPos',  key: 'pos_pct',     fmt: v => `${(+v).toFixed(1)} %`  },
+  { id: 'slDrop', val: 'valDrop', key: 'load_drop_m', fmt: v => `${(+v).toFixed(1)} m`  },
+];
+
+for (const { id, val, key, fmt } of sliders) {
+  const el = document.getElementById(id);
+  el.addEventListener('input', () => {
+    st[key] = +el.value;
+    document.getElementById(val).textContent = fmt(el.value);
+    update();
+  });
+}
+
+// ── Teclado (espejo de controles del Python) ──────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT') return;
+  let changed = true;
+  switch (e.key) {
+    case '1': setMaH(0); break;
+    case '2': setMaH(1); break;
+    case '3': setMaH(2); break;
+    case '4': setMaV(0); break;
+    case '5': setMaV(1); break;
+    case '6': setMaV(2); break;
+    case 'f': case 'F': toggleFriction(); break;
+    default: changed = false;
+  }
+  if (changed) e.preventDefault();
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  Arranque
+// ══════════════════════════════════════════════════════════════════════
+refreshVmButtons();
+
+// Sincronizar displays con valores iniciales de los sliders
+for (const { id, val, fmt } of sliders) {
+  document.getElementById(val).textContent =
+    fmt(document.getElementById(id).value);
+}
+
+update();
+</script>
+
+</body>
+</html>
