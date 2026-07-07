@@ -1,0 +1,1168 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Terrain Analysis — Rescate con cuerdas</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet-rotate@0.2.8/dist/leaflet-rotate-src.js"></script>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #0a0f0a; --panel: #0d160d; --green: #00ff33;
+      --green-dim: #1f8a3a; --amber: #ffb000; --red: #ff3b3b;
+      --blue: #3b8cff; --grid: #103a1a;
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+      background: var(--bg); color: var(--green);
+      font-family: "DejaVu Sans Mono", "Courier New", monospace;
+    }
+
+    /* Mitad superior: mapa + panel (con resultados y perfil). Mitad inferior: 3D a full ancho. */
+    #top    { height: 50vh; display: flex; min-height: 0; }
+    #bottom { height: 50vh; display: flex; min-height: 0;
+              border-top: 1px solid var(--grid); background: var(--panel); }
+    #surf-pane { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; position: relative; }
+
+    /* HUD de clima: superpuesto en el mapa topográfico (arriba), abajo a la izquierda */
+    #weather-hud {
+      display: none; position: absolute; left: 10px; bottom: 162px; z-index: 1000;
+      width: 188px; padding: 8px 10px; pointer-events: none;
+      background: rgba(13,22,13,0.86); border: 1px solid var(--green-dim);
+      border-radius: 4px; box-shadow: 0 0 10px #000; font-size: 11px; color: var(--green);
+    }
+    #weather-hud .wx-cond { color: var(--green-dim); text-transform: uppercase;
+                            letter-spacing: 0.5px; font-size: 10px; }
+    #weather-hud .wx-temp { font-size: 22px; font-weight: bold; line-height: 1.1; margin: 1px 0 4px; }
+    #weather-hud .wx-feel { font-size: 10px; color: var(--green-dim); margin-left: 6px; font-weight: normal; }
+    #weather-hud .wx-grid { display: grid; grid-template-columns: auto 1fr; gap: 1px 8px; }
+    #weather-hud .wx-grid span:nth-child(odd) { color: var(--green-dim); }
+    #weather-hud .wx-grid span:nth-child(even) { text-align: right; }
+    #weather-hud .wx-arrow { display: inline-block; color: var(--amber); font-weight: bold; }
+    #weather-hud .wx-note { color: var(--amber); margin-top: 5px; line-height: 1.3; }
+    #weather-hud .wx-load, #weather-hud .wx-err { color: var(--green-dim); }
+    #weather-hud .wx-err { color: var(--amber); }
+    #sun-time-row { display: none; }
+    #sun-time { accent-color: var(--amber); }
+
+    #map { flex: 1 1 auto; height: 100%; background: var(--bg); position: relative; }
+    #side {
+      width: 340px; flex: 0 0 340px; height: 100%; overflow-y: auto;
+      padding: 14px; background: var(--panel); border-left: 1px solid var(--grid);
+    }
+
+    /* --- Mapa oscuro (tema terminal verde): filtra solo las TILES --- */
+    .leaflet-tile-pane {
+      filter: invert(1) brightness(0.95) contrast(1.15)
+              sepia(0.5) hue-rotate(75deg) saturate(0.9);
+    }
+    .leaflet-control-layers, .leaflet-bar a, .leaflet-control-attribution {
+      background: var(--panel) !important; color: var(--green) !important;
+      border-color: var(--grid) !important;
+    }
+    .leaflet-control-layers label { color: var(--green); }
+    .leaflet-bar a:hover { background: var(--grid) !important; }
+    .leaflet-control-attribution a { color: var(--green-dim) !important; }
+    /* Brújula del mapa (norte siempre arriba) */
+    .compass {
+      width: 50px; height: 50px; border-radius: 50%; position: relative;
+      background: rgba(13,22,13,0.88); border: 1px solid var(--green-dim);
+      box-shadow: 0 0 8px #000; color: var(--green-dim);
+    }
+    .compass .needle {
+      position: absolute; top: 4px; left: 50%; transform: translateX(-50%);
+      width: 0; height: 0; border-left: 6px solid transparent;
+      border-right: 6px solid transparent; border-bottom: 18px solid var(--red);
+    }
+    .compass .needle-s {
+      position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
+      width: 0; height: 0; border-left: 6px solid transparent;
+      border-right: 6px solid transparent; border-top: 18px solid #2b5e34;
+    }
+    .compass .lbl { position: absolute; left: 0; right: 0; text-align: center;
+                    font: 700 10px monospace; }
+    .compass .nN { top: -2px; color: var(--red); }
+    .compass .nS { bottom: -2px; }
+    .compass .nE { top: 19px; right: 3px; left: auto; }
+    .compass .nW { top: 19px; left: 3px; right: auto; }
+
+    /* Navpad: rotar/panear el mapa solo con el mouse, alrededor de la brújula */
+    .navpad {
+      display: grid; grid-template-columns: repeat(3, auto); gap: 3px; padding: 4px;
+      justify-items: center; align-items: center;
+      background: rgba(13,22,13,0.85); border: 1px solid var(--green-dim);
+      border-radius: 6px; box-shadow: 0 0 8px #000;
+    }
+    .navpad .np {
+      width: 34px; height: 34px; padding: 0; margin: 0; line-height: 1;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(0,0,0,0.3); color: var(--green); border: 1px solid var(--green-dim);
+      border-radius: 4px; font-size: 15px; cursor: pointer;
+    }
+    .navpad .np:hover { background: var(--green); color: var(--bg); }
+
+    /* Botón de modo (dibujar / mover) */
+    .mode-btn {
+      background: rgba(13,22,13,0.88); color: var(--green); border: 1px solid var(--green-dim);
+      border-radius: 4px; padding: 5px 9px; font: 700 11px monospace; cursor: pointer;
+      box-shadow: 0 0 8px #000;
+    }
+    .mode-btn:hover { background: var(--green); color: var(--bg); }
+    .mode-btn.on { border-color: var(--green); color: var(--bg); background: var(--green); }
+    /* Etiquetas de distancia de los lados del rectángulo */
+    .dist-label {
+      color: var(--green); background: rgba(13,22,13,0.82); border: 1px solid var(--green-dim);
+      border-radius: 3px; font: 700 10px monospace; text-align: center; line-height: 14px;
+      box-shadow: 0 0 4px #000; white-space: nowrap;
+    }
+    /* Tooltip de elevación del punto hover (3D → mapa) */
+    .leaflet-tooltip.elev-tip {
+      background: rgba(13,22,13,0.9); color: var(--amber); border: 1px solid var(--green-dim);
+      font: 700 11px monospace; box-shadow: 0 0 6px #000;
+    }
+    .leaflet-tooltip.elev-tip::before { display: none; }
+    /* Barra de escala de Leaflet en el tema verde */
+    .leaflet-control-scale-line {
+      background: rgba(13,22,13,0.82) !important; color: var(--green) !important;
+      border: 1px solid var(--green-dim) !important; border-top: none !important;
+    }
+
+    h1 { font-size: 15px; margin: 0 0 4px; letter-spacing: 1px; }
+    .sub { color: var(--green-dim); font-size: 11px; margin-bottom: 12px; }
+    .hint { color: var(--green-dim); font-size: 12px; line-height: 1.5; }
+    .row { display: flex; justify-content: space-between; padding: 4px 0;
+           border-bottom: 1px solid var(--grid); font-size: 13px; }
+    .row .k { color: var(--green-dim); }
+    .row .v { color: var(--green); font-weight: bold; }
+
+    .controls { margin: 10px 0; display: flex; gap: 8px; align-items: center; }
+    button {
+      background: transparent; color: var(--green); border: 1px solid var(--green-dim);
+      padding: 6px 12px; font-family: inherit; font-size: 12px; cursor: pointer; border-radius: 3px;
+    }
+    button:hover { background: var(--green); color: var(--bg); }
+    .controls label { font-size: 12px; color: var(--green-dim); }
+    .controls input[type=number] {
+      width: 58px; background: var(--bg); color: var(--green);
+      border: 1px solid var(--green-dim); font-family: inherit; padding: 3px;
+    }
+    .note { color: var(--amber); font-size: 11px; margin-top: 8px; line-height: 1.4; }
+
+    /* Panel inferior: superficie 3D a todo el ancho */
+    .pane-head { display: flex; justify-content: space-between; align-items: baseline;
+                 gap: 10px; padding: 8px 14px 4px; }
+    .pane-head .title { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
+    .pane-head .msg { font-size: 11px; color: var(--green-dim); }
+    #plot3d { flex: 1 1 auto; min-height: 0; }
+    /* Overlay "cargando" sobre el 3D mientras se regenera la superficie */
+    #m3d-loading {
+      display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      z-index: 600; padding: 10px 18px; pointer-events: none;
+      background: rgba(13, 22, 13, 0.9); border: 1px solid var(--green-dim); border-radius: 6px;
+      color: var(--green); font: 700 13px monospace; letter-spacing: 1px; box-shadow: 0 0 12px #000;
+      animation: m3dpulse 1s ease-in-out infinite;
+    }
+    @keyframes m3dpulse { 0%, 100% { opacity: 0.5; } 50% { opacity: 1; } }
+  </style>
+</head>
+<body>
+  <div id="top">
+    <div id="map"><div id="weather-hud"></div></div>
+    <aside id="side">
+      <h1>▌TERRAIN ANALYSIS</h1>
+
+      <div class="sub" id="draw-hint">Arrastrá sobre el mapa para dibujar el área de análisis.
+        Las 4 esquinas (rojo NO · azul NE · verde SE · amarillo SO) coinciden en el 3D.</div>
+
+      <div class="controls">
+        <button id="reset">reset</button>
+      </div>
+
+      <!-- Un solo interruptor: HUD de clima + luz solar + viento animado + nubes/lluvia/rayos.
+           Muestras, detalle y si se dibuja el agua se fijan desde el Makefile (vía /api/config). -->
+      <div class="controls">
+        <label><input type="checkbox" id="fx-all" /> efectos atmosféricos</label>
+      </div>
+      <div class="controls" id="sun-time-row">
+        <label style="flex:1 1 auto">hora del sol
+          <input id="sun-time" type="range" min="0" max="1439" step="10" style="width:130px;vertical-align:middle;" />
+        </label>
+        <span id="sun-time-lbl" class="sub" style="margin:0;"></span>
+        <button id="sun-now">ahora</button>
+      </div>
+
+      <div id="results" style="margin-top:8px;"></div>
+
+      <div id="notes"></div>
+    </aside>
+  </div>
+
+  <div id="bottom">
+    <div id="surf-pane">
+      <div class="pane-head">
+        <span class="title">superficie 3D del terreno</span>
+        <span id="m3d-msg" class="msg"></span>
+      </div>
+      <div id="plot3d"></div>
+      <div id="m3d-loading">▌ cargando 3D…</div>
+    </div>
+  </div>
+
+  <script>
+    const CENTER = [14.6349, -90.5069], ZOOM = 13;
+    // Iluminación neutra del relieve (cuando NO se usa la luz solar real del clima).
+    const DEFAULT_LIGHT = { x: -15000, y: 20000, z: 60000, ambient: 0.5, diffuse: 0.9 };
+    // Equidistancia de las curvas de nivel del 3D, en metros (como carta topográfica).
+    const CONTOUR_STEP = 10;
+
+    const MAX_ZOOM = 21;   // permite acercar más allá del zoom nativo de las tiles (overzoom)
+    // El mapa NO se sincroniza con el 3D. El usuario lo rota cuando quiere:
+    // Shift + arrastrar (escritorio) o gesto de rotación con dos dedos (touch).
+    const map = L.map("map", {
+      maxZoom: MAX_ZOOM, zoomControl: false,   // el zoom va en el navpad (+ / −)
+      rotate: true, rotateControl: false, touchRotate: true, shiftKeyRotate: true
+    }).setView(CENTER, ZOOM);
+    const osm = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: MAX_ZOOM, maxNativeZoom: 19, attribution: "© OpenStreetMap"
+    });
+    const topo = L.tileLayer("https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png", {
+      maxZoom: MAX_ZOOM, maxNativeZoom: 17, attribution: "© OpenTopoMap (CC-BY-SA) · © OpenStreetMap"
+    });
+    topo.addTo(map);
+    L.control.layers(
+      { "Topográfico (curvas de nivel)": topo, "Calles (OSM)": osm },
+      {}, { collapsed: false }
+    ).addTo(map);
+
+    // Navpad: brújula en el centro + botones para rotar (⟲ ⟳) y panear (▲▼◀▶)
+    // el mapa solo con el mouse. La brújula refleja la rotación (manual o por botón).
+    const compassHTML =
+      '<div class="compass">' +
+      '<div class="needle"></div><div class="needle-s"></div>' +
+      '<div class="lbl nN">N</div><div class="lbl nS">S</div>' +
+      '<div class="lbl nE">E</div><div class="lbl nW">O</div></div>';
+    const NavPad = L.Control.extend({
+      onAdd: function () {
+        const wrap = L.DomUtil.create("div", "navpad");
+        wrap.innerHTML =
+          '<button class="np" data-act="rotL" title="rotar a la izquierda">⟲</button>' +
+          '<button class="np" data-act="up" title="mover arriba">▲</button>' +
+          '<button class="np" data-act="rotR" title="rotar a la derecha">⟳</button>' +
+          '<button class="np" data-act="left" title="mover izquierda">◀</button>' +
+          compassHTML +
+          '<button class="np" data-act="right" title="mover derecha">▶</button>' +
+          '<button class="np" data-act="zout" title="alejar">−</button>' +
+          '<button class="np" data-act="down" title="mover abajo">▼</button>' +
+          '<button class="np" data-act="zin" title="acercar">+</button>';
+        L.DomEvent.disableClickPropagation(wrap);   // que el clic no arrastre el mapa
+        L.DomEvent.on(wrap, "click", (ev) => {
+          const b = ev.target.closest("button"); if (!b) return;
+          const PAN = 120, ROT = 15, bearing = map.getBearing ? (map.getBearing() || 0) : 0;
+          switch (b.dataset.act) {
+            case "up": map.panBy([0, -PAN]); break;
+            case "down": map.panBy([0, PAN]); break;
+            case "left": map.panBy([-PAN, 0]); break;
+            case "right": map.panBy([PAN, 0]); break;
+            case "rotL": if (map.setBearing) map.setBearing(bearing - ROT); break;
+            case "rotR": if (map.setBearing) map.setBearing(bearing + ROT); break;
+            case "zin": map.zoomIn(); break;
+            case "zout": map.zoomOut(); break;
+          }
+        });
+        return wrap;
+      }
+    });
+    map.addControl(new NavPad({ position: "bottomleft" }));
+    const compassEl = document.querySelector(".compass");
+    // Al rotar el mapa, la brújula gira con el mismo bearing (apunta al norte real).
+    map.on("rotate", () => {
+      const b = map.getBearing ? map.getBearing() : 0;
+      if (compassEl) compassEl.style.transform = `rotate(${b}deg)`;
+    });
+
+    // AOI dibujado a mano: rectángulo con 4 esquinas de color (mismos colores en el 3D).
+    // NO=noroeste(rojo) · NE=noreste(azul) · SE=sureste(verde) · SO=suroeste(amarillo).
+    const CORNERS = [
+      { key: "NO", color: "#ff3b3b" }, { key: "NE", color: "#3b8cff" },
+      { key: "SE", color: "#00ff33" }, { key: "SO", color: "#ffb000" }
+    ];
+    let rectBounds = null, rectLayer = null, cornerMarkers = [], sideLabels = [];
+    let hoverMarker = null;                                             // punto en el mapa al pasar el mouse por el 3D
+    let lastSurfaceData = null, lastWeather = null, sunManual = false;  // estado del clima/sol
+    // Parámetros fijados desde el Makefile (vía GET /api/config). Defaults por si falla.
+    let CONFIG = { detail: 120, water: true };
+    fetch("/api/config").then(r => r.ok ? r.json() : null).then(c => { if (c) CONFIG = c; }).catch(() => {});
+
+    // Mientras el usuario orbita/hace zoom en el 3D, pausamos los restyle de las
+    // animaciones: si no, cada restyle por frame le roba el arrastre a la escena
+    // gl3d y se vuelve imposible mover o acercar. Captura para ganarle a Plotly.
+    let plotBusy = false, plotBusyT = null;
+    (function bindPlotInteraction() {
+      const el = document.getElementById("plot3d");
+      const release = (ms) => { clearTimeout(plotBusyT); plotBusyT = setTimeout(() => { plotBusy = false; }, ms); };
+      el.addEventListener("pointerdown", () => { plotBusy = true; clearTimeout(plotBusyT); }, true);
+      el.addEventListener("wheel", () => { plotBusy = true; release(450); }, { passive: true, capture: true });
+      window.addEventListener("pointerup", () => release(150), true);
+    })();
+    // ---------- AOI: rectángulo dibujado arrastrando el mouse ----------
+    function dotIcon(color) {
+      return L.divIcon({ className: "",
+        html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};` +
+              `border:2px solid #fff;box-shadow:0 0 3px #000;"></div>`,
+        iconSize: [18, 18], iconAnchor: [9, 9] });
+    }
+    function distIcon(text) {
+      return L.divIcon({ className: "dist-label", html: text, iconSize: [64, 16], iconAnchor: [32, 8] });
+    }
+    function fmtDist(m) { return m >= 1000 ? (m / 1000).toFixed(2) + " km" : Math.round(m) + " m"; }
+    function corners(b) {
+      const n = b.getNorth(), s = b.getSouth(), w = b.getWest(), e = b.getEast();
+      return { NO: L.latLng(n, w), NE: L.latLng(n, e), SE: L.latLng(s, e), SO: L.latLng(s, w) };
+    }
+
+    // Borde menta claro + relleno verde suave → se distingue del mapa (verde oscuro).
+    const RECT_STYLE = { color: "#c8ffd0", weight: 2, fillColor: "#2bd66a", fillOpacity: 0.12, interactive: false };
+    const cornerLatLngArray = (b) => { const cs = corners(b); return CORNERS.map(c => cs[c.key]); };
+
+    function clearRect() {
+      if (rectLayer) { map.removeLayer(rectLayer); rectLayer = null; }
+      cornerMarkers.forEach(m => map.removeLayer(m)); cornerMarkers = [];
+      sideLabels.forEach(m => map.removeLayer(m)); sideLabels = [];
+      rectBounds = null;
+    }
+
+    // Etiquetas de distancia persistentes (se actualizan, no se recrean por frame).
+    function updateSideLabels(b) {
+      const cs = corners(b);
+      const sides = [[cs.NO, cs.NE], [cs.SO, cs.SE], [cs.NO, cs.SO], [cs.NE, cs.SE]];
+      for (let i = 0; i < 4; i++) {
+        const [a, b2] = sides[i];
+        const mid = L.latLng((a.lat + b2.lat) / 2, (a.lng + b2.lng) / 2);
+        const txt = fmtDist(map.distance(a, b2));
+        if (!sideLabels[i]) sideLabels[i] = L.marker(mid, { icon: distIcon(txt), interactive: false }).addTo(map);
+        else { sideLabels[i].setLatLng(mid); sideLabels[i].setIcon(distIcon(txt)); }
+      }
+    }
+
+    // Coloca/actualiza el rectángulo + las 4 esquinas ARRASTRABLES + etiquetas.
+    function placeRect(b) {
+      rectBounds = b;
+      const arr = cornerLatLngArray(b);
+      if (!rectLayer) rectLayer = L.rectangle(b, RECT_STYLE).addTo(map);
+      else rectLayer.setBounds(b);
+      if (!cornerMarkers.length) {
+        for (let i = 0; i < 4; i++) {
+          const m = L.marker(arr[i], { draggable: true, icon: dotIcon(CORNERS[i].color), zIndexOffset: 1000 }).addTo(map);
+          m.on("drag", () => onCornerDrag(i));
+          m.on("dragend", () => scheduleSurface());   // regenera el 3D al soltar
+          cornerMarkers.push(m);
+        }
+      } else {
+        for (let i = 0; i < 4; i++) cornerMarkers[i].setLatLng(arr[i]);
+      }
+      updateSideLabels(b);
+    }
+
+    // Arrastrar una esquina reforma el rectángulo manteniéndolo alineado: la esquina
+    // OPUESTA queda fija; las adyacentes se acomodan. No regenera el 3D hasta soltar.
+    function onCornerDrag(i) {
+      const dragged = cornerMarkers[i].getLatLng();
+      const opp = cornerMarkers[(i + 2) % 4].getLatLng();
+      rectBounds = L.latLngBounds(dragged, opp);
+      rectLayer.setBounds(rectBounds);
+      const arr = cornerLatLngArray(rectBounds);
+      for (let k = 0; k < 4; k++) if (k !== i) cornerMarkers[k].setLatLng(arr[k]);  // no toco la que arrastra
+      updateSideLabels(rectBounds);
+    }
+
+    // Modo dibujo: arrastrar traza el rectángulo (paneo/zoom/rotación van por el navpad).
+    let drawMode = true, drawing = false, drawStart = null, drawPreview = null;
+    function setDrawMode(on) {
+      drawMode = on;
+      const c = document.getElementById("map");
+      if (on) { map.dragging.disable(); c.style.cursor = "crosshair"; }
+      else { map.dragging.enable(); c.style.cursor = ""; }
+    }
+    setDrawMode(true);
+    map.on("mousedown", (e) => {
+      if (!drawMode) return;
+      const t = e.originalEvent && e.originalEvent.target;
+      if (t && t.closest && t.closest(".leaflet-marker-icon")) return;  // agarró una esquina → no dibujar
+      drawing = true; drawStart = e.latlng;
+      if (drawPreview) map.removeLayer(drawPreview);
+      drawPreview = L.rectangle(L.latLngBounds(drawStart, drawStart),
+        { color: "#c8ffd0", weight: 2, dashArray: "5,5", fillColor: "#2bd66a", fillOpacity: 0.08 }).addTo(map);
+    });
+    map.on("mousemove", (e) => { if (drawing) drawPreview.setBounds(L.latLngBounds(drawStart, e.latlng)); });
+    map.on("mouseup", (e) => {
+      if (!drawing) return;
+      drawing = false;
+      if (drawPreview) { map.removeLayer(drawPreview); drawPreview = null; }
+      const b = L.latLngBounds(drawStart, e.latlng), cs = corners(b);
+      if (map.distance(cs.NO, cs.NE) < 50 || map.distance(cs.NO, cs.SO) < 50) return;  // muy chico (un clic)
+      placeRect(b); scheduleSurface();
+    });
+
+    let surfTimer = null;
+    function scheduleSurface() { clearTimeout(surfTimer); surfTimer = setTimeout(updateSurface, 250); }
+
+    // Polígono para la API: el rectángulo dibujado tal cual (el backend insetea el
+    // muestreo un epsilon, así la malla llena el rectángulo entero sin huecos).
+    function surfacePolygon(b) {
+      const cs = corners(b);
+      return [cs.NO, cs.NE, cs.SE, cs.SO].map(p => ({ lat: p.lat, lon: p.lng }));   // horario
+    }
+
+    async function updateSurface() {
+      const msg = document.getElementById("m3d-msg");
+      if (!rectBounds) {
+        Plotly.purge("plot3d"); msg.textContent = "";
+        stopWindAnimation(); stopWeatherFx();
+        lastSurfaceData = null; document.getElementById("weather-hud").style.display = "none";
+        return;
+      }
+      const grid = CONFIG.detail;
+      const polygon = surfacePolygon(rectBounds);
+      msg.textContent = "generando…";
+      document.getElementById("m3d-loading").style.display = "block";   // overlay "cargando"
+      try {
+        // Superficie y agua se piden EN PARALELO: las dos llamadas lentas (elevación
+        // y Overpass) solapan su latencia. El agua se drapea recién con la malla lista.
+        const surfaceReq = fetch("/api/surface", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ polygon, grid })
+        }).then(r => { if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); });
+        const waterReq = CONFIG.water ? fetchWater(polygon) : Promise.resolve(null);
+
+        const d = await surfaceReq;
+        await renderSurface(d);                       // incluye las 4 esquinas de color
+        lastSurfaceData = d;
+        showAreaResults(d);
+        const base = `${d.zmin}–${d.zmax} m · ${d.grid}×${d.grid}`;
+        msg.textContent = base;
+        if (CONFIG.water) {
+          const n = drapeWater(d, await waterReq);    // el fetch ya iba en vuelo
+          msg.textContent = base + (n >= 0 ? ` · agua: ${n}` : " · agua: error");
+        }
+        document.getElementById("m3d-loading").style.display = "none";  // 3D ya dibujado
+        await refreshWeather();                        // HUD + luz solar + viento (si están activos)
+      } catch (err) {
+        msg.textContent = "error: " + err;
+        document.getElementById("m3d-loading").style.display = "none";
+      }
+    }
+
+    // Resultados del área (reemplazan al análisis punto→punto): lados, área, elevación.
+    function showAreaResults(d) {
+      const cs = corners(rectBounds);
+      const wAvg = (map.distance(cs.NO, cs.NE) + map.distance(cs.SO, cs.SE)) / 2;
+      const hAvg = (map.distance(cs.NO, cs.SO) + map.distance(cs.NE, cs.SE)) / 2;
+      setResults([
+        ["lado E–O (ancho)", fmtDist(wAvg)],
+        ["lado N–S (alto)", fmtDist(hAvg)],
+        ["área aprox.", (wAvg * hAvg / 1e6).toFixed(2) + " km²"],
+        ["elevación mín", fmt(d.zmin, " m")],
+        ["elevación máx", fmt(d.zmax, " m")],
+        ["rango de elevación", fmt(Math.round(d.zmax - d.zmin), " m")],
+      ]);
+      document.getElementById("notes").innerHTML = "";
+    }
+
+    // Botón de modo (dibujar ↔ mover) + barra de escala del mapa.
+    const ModeCtl = L.Control.extend({ onAdd() {
+      const btn = L.DomUtil.create("button", "mode-btn on");
+      const sync = () => { btn.textContent = drawMode ? "▭ dibujar" : "✥ mover"; btn.classList.toggle("on", drawMode); };
+      L.DomEvent.disableClickPropagation(btn);
+      L.DomEvent.on(btn, "click", () => { setDrawMode(!drawMode); sync(); });
+      sync();
+      return btn;
+    } });
+    map.addControl(new ModeCtl({ position: "topleft" }));
+    L.control.scale({ metric: true, imperial: false, position: "bottomright", maxWidth: 140 }).addTo(map);
+
+    // Interpolación bilineal de la elevación de la malla en (x,y) metros.
+    // d.x asciende (oeste→este); d.y desciende (norte→sur). Null si cae en hueco.
+    function interpZ(d, x, y) {
+      const X = d.x, Y = d.y, Z = d.z;
+      if (x < X[0] || x > X[X.length - 1] || y > Y[0] || y < Y[Y.length - 1]) return null;
+      let c = 0; while (c < X.length - 2 && X[c + 1] < x) c++;
+      let r = 0; while (r < Y.length - 2 && Y[r + 1] > y) r++;
+      const z00 = Z[r][c], z01 = Z[r][c + 1], z10 = Z[r + 1][c], z11 = Z[r + 1][c + 1];
+      if (z00 == null || z01 == null || z10 == null || z11 == null) return null;
+      const tx = (x - X[c]) / ((X[c + 1] - X[c]) || 1);
+      const ty = (y - Y[r]) / ((Y[r + 1] - Y[r]) || 1);
+      const top = z00 + (z01 - z00) * tx, bot = z10 + (z11 - z10) * tx;
+      return top + (bot - top) * ty;
+    }
+
+    // 4 esquinas de color "pegadas al eje de elevación": un poste vertical en cada
+    // esquina del AOI (mismos colores que en el mapa), desde el terreno hasta arriba,
+    // con un marcador en la punta. Se incluyen dentro del newPlot.
+    function cornerPosts(d) {
+      if (!rectBounds) return [];
+      const cs = corners(rectBounds);
+      const top = d.zmax + Math.max(60, (d.zmax - d.zmin) * 0.18);
+      const traces = [];
+      const minX = d.x[0], maxX = d.x[d.x.length - 1], maxY = d.y[0], minY = d.y[d.y.length - 1];
+      for (const c of CORNERS) {
+        const ll = cs[c.key];
+        // clamp al extent de la malla (el muestreo está inseteado un epsilon)
+        const x = Math.max(minX, Math.min(maxX, (ll.lng - d.lon0) * d.mx));
+        const y = Math.max(minY, Math.min(maxY, (ll.lat - d.lat0) * d.my));
+        const z = interpZ(d, x, y);
+        const baseZ = (z == null ? d.zmin : z);
+        traces.push(
+          { type: "scatter3d", mode: "lines", x: [x, x], y: [y, y], z: [baseZ, top],
+            line: { color: c.color, width: 5 }, hoverinfo: "skip", showlegend: false, name: "esquina" },
+          { type: "scatter3d", mode: "markers", x: [x], y: [y], z: [top],
+            marker: { size: 9, color: c.color, line: { color: "#fff", width: 1.5 } },
+            hoverinfo: "skip", showlegend: false, name: "esquina" }
+        );
+      }
+      return traces;
+    }
+
+    // Agua de OSM: el FETCH va separado del DRAPEADO para poder pedirla EN PARALELO
+    // con la superficie (la red se solapa; drapear necesita la malla `d`).
+    async function fetchWater(polygon) {
+      try {
+        const r = await fetch("/api/water", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ polygon })
+        });
+        return r.ok ? await r.json() : null;
+      } catch (_) { return null; }   // Overpass puede fallar/limitar; el 3D sigue sin agua
+    }
+    // Drapea el agua sobre la malla. Devuelve nº de cuerpos, 0 si vacío, -1 si falló.
+    // Lagos/lagunas/mar (kind="area") se RELLENAN de azul con un mesh3d plano al
+    // nivel del agua (≈ borde más bajo); ríos/costas (line/coast) quedan como líneas.
+    function drapeWater(d, w) {
+      if (!w) return -1;
+      if (!w.features || !w.features.length) return 0;
+      // Flota lo justo para verse sobre el terreno (la superficie opaca lo tapa si
+      // queda coplanar) sin parallax notorio. Antes 0.3% → enterrada; 2% → desfasada.
+      const zoff = Math.max(12, (d.zmax - d.zmin) * 0.015);
+      const toX = lon => (lon - d.lon0) * d.mx, toY = lat => (lat - d.lat0) * d.my;
+      const traces = [];
+      const lx = [], ly = [], lz = [];                          // ríos/costas + contornos de lago
+      for (const f of w.features) {
+        if (f.kind === "area" && f.coords.length >= 3) {
+          // nivel del lago = elevación del DEM en su CENTROIDE (la superficie del
+          // agua), no el borde más bajo (que podía quedar por debajo y enterrarse).
+          const xs = [], ys = []; let sx = 0, sy = 0;
+          for (const ll of f.coords) {
+            const x = toX(ll[0]), y = toY(ll[1]); xs.push(x); ys.push(y); sx += x; sy += y;
+          }
+          const zc = interpZ(d, sx / xs.length, sy / ys.length);
+          const flat = (zc == null ? d.zmin : zc) + zoff;
+          traces.push({
+            type: "mesh3d", x: xs, y: ys, z: xs.map(() => flat), delaunayaxis: "z",
+            color: "#1f6fff", opacity: 0.5, flatshading: true,
+            lighting: { ambient: 0.85, diffuse: 0.35, specular: 0.05 },
+            hoverinfo: "skip", showlegend: false, name: "agua"
+          });
+          for (const ll of f.coords) { lx.push(toX(ll[0])); ly.push(toY(ll[1])); lz.push(flat); }
+          lx.push(null); ly.push(null); lz.push(null);
+        } else {
+          for (const ll of f.coords) {
+            const x = toX(ll[0]), y = toY(ll[1]); const z = interpZ(d, x, y);
+            lx.push(x); ly.push(y); lz.push(z == null ? null : z + zoff);
+          }
+          lx.push(null); ly.push(null); lz.push(null);
+        }
+      }
+      traces.push({
+        type: "scatter3d", mode: "lines", x: lx, y: ly, z: lz,
+        line: { color: "#33b1ff", width: 4 }, connectgaps: false,
+        hoverinfo: "skip", showlegend: false, name: "agua"
+      });
+      Plotly.addTraces("plot3d", traces);
+      return w.count;
+    }
+
+    function renderSurface(d) {
+      const minX = Math.min(...d.x), maxX = Math.max(...d.x);
+      const minY = Math.min(...d.y), maxY = Math.max(...d.y);
+      const xr = maxX - minX, yr = maxY - minY, zr = (d.zmax - d.zmin) || 1;
+      const base = Math.max(xr, yr) || 1;     // normaliza el aspectratio (caja ~1) para que la cámara encuadre
+      const data = [{
+        type: "surface", x: d.x, y: d.y, z: d.z,
+        colorscale: [[0, "#04230d"], [0.5, "#1f8a3a"], [1, "#d8ff5a"]],
+        colorbar: { title: "m", tickfont: { color: "#00ff33" }, titlefont: { color: "#00ff33" } },
+        // Curvas de nivel cada CONTOUR_STEP m. hoverinfo:"none" → NO muestra recuadro
+        // en el 3D pero SÍ dispara plotly_hover (la info se ve en el mapa topográfico).
+        // highlight:false evita las líneas de sección que "flotan".
+        hoverinfo: "none",
+        contours: {
+          x: { highlight: false }, y: { highlight: false },
+          z: {
+            show: true, usecolormap: true, width: 1, project: { z: false }, highlight: false,
+            start: Math.floor(d.zmin / CONTOUR_STEP) * CONTOUR_STEP,
+            end: Math.ceil(d.zmax / CONTOUR_STEP) * CONTOUR_STEP,
+            size: CONTOUR_STEP
+          }
+        },
+        // Iluminación tipo relieve para que el terreno se vea definido (sombras en barrancos)
+        lighting: { ambient: DEFAULT_LIGHT.ambient, diffuse: DEFAULT_LIGHT.diffuse, specular: 0.15, roughness: 0.85, fresnel: 0.2 },
+        lightposition: { x: DEFAULT_LIGHT.x, y: DEFAULT_LIGHT.y, z: DEFAULT_LIGHT.z }
+      }];
+
+      // Brújula 3D: flecha roja CHICA hacia el norte (+Y), en una esquina. Vive en
+      // el mundo 3D → rota con el terreno al girar la vista, marcando el norte real.
+      const arrow = Math.min(xr, yr) * 0.18 || 100;
+      const x0 = Math.min(...d.x), y0 = Math.min(...d.y), zT = d.zmax;
+      data.push({
+        type: "scatter3d", mode: "lines+markers+text",
+        x: [x0, x0], y: [y0, y0 + arrow], z: [zT, zT],
+        line: { color: "#ff3b3b", width: 6 },
+        marker: { size: [0, 6], color: "#ff3b3b", symbol: "diamond" },
+        text: ["", "N"], textposition: "top center",
+        textfont: { color: "#ff3b3b", size: 16, family: "monospace" },
+        hoverinfo: "skip", showlegend: false
+      });
+      // Las 4 esquinas de color (postes) dentro del mismo plot.
+      for (const t of cornerPosts(d)) data.push(t);
+
+      const layout = {
+        paper_bgcolor: "#0a0f0a", font: { color: "#00ff33", family: "monospace" },
+        margin: { l: 0, r: 0, t: 0, b: 0 },
+        scene: {
+          bgcolor: "#0a0f0a",
+          xaxis: { title: "este (m)", color: "#1f8a3a", gridcolor: "#103a1a", range: [minX, maxX] },
+          yaxis: { title: "norte (m)", color: "#1f8a3a", gridcolor: "#103a1a", range: [minY, maxY] },
+          zaxis: { title: "elev (m)", color: "#1f8a3a", gridcolor: "#103a1a", range: [d.zmin, d.zmax] },
+          // Proporción REAL 1:1:1 en metros (los 3 ejes ÷ base = misma escala), con
+          // rangos y aspectratio EXPLÍCITOS (manual) → Plotly NO re-deriva la escala
+          // al mover partículas (no "vibra"), y la caja queda normalizada (~1) para encuadrar.
+          aspectmode: "manual",
+          aspectratio: { x: xr / base, y: yr / base, z: zr / base },
+          // Cámara inicial mirando desde el SUR → norte "arriba", alineado con el mapa.
+          camera: { eye: { x: 0, y: -1.7, z: 1.1 }, center: { x: 0, y: 0, z: 0 }, up: { x: 0, y: 0, z: 1 } }
+        }
+      };
+      const config = { responsive: true, displaylogo: false,
+        toImageButtonOptions: { filename: "terreno_3d", format: "png", scale: 2 } };
+      // El 3D y el mapa son independientes: orbitar el 3D ya NO rota el mapa.
+      return Plotly.newPlot("plot3d", data, layout, config).then(() => {
+        const gd = document.getElementById("plot3d");
+        if (!gd._hoverBound) {     // se enlaza una sola vez (persiste entre newPlot)
+          gd.on("plotly_hover", onSurfaceHover);
+          gd.on("plotly_unhover", onSurfaceUnhover);
+          gd._hoverBound = true;
+        }
+      });
+    }
+
+    // Hover sobre la superficie 3D → tooltip con elevación (Plotly) + punto en el
+    // mapa topográfico en esa ubicación (se convierte x/y metros → lon/lat).
+    function onSurfaceHover(ev) {
+      const p = ev && ev.points && ev.points[0];
+      if (!p || !p.data || p.data.type !== "surface" || !lastSurfaceData) return;
+      const d = lastSurfaceData;
+      const lat = p.y / d.my + d.lat0, lon = p.x / d.mx + d.lon0;
+      const txt = `${Math.round(p.z)} m<br>${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+      if (!hoverMarker) {
+        hoverMarker = L.circleMarker([lat, lon], {
+          radius: 6, color: "#fff", weight: 2, fillColor: "#ffb000", fillOpacity: 0.95, interactive: false
+        }).addTo(map);
+        hoverMarker.bindTooltip(txt, { permanent: true, direction: "top", className: "elev-tip", offset: [0, -4] });
+      } else {
+        hoverMarker.setLatLng([lat, lon]).setTooltipContent(txt);
+      }
+    }
+    function onSurfaceUnhover() {
+      if (hoverMarker) { map.removeLayer(hoverMarker); hoverMarker = null; }
+    }
+
+    // ============================ CLIMA / SOL / VIENTO ============================
+    // El clima se drapea sobre la MISMA malla 3D (lastSurfaceData): el HUD muestra
+    // las condiciones, la luz solar real reorienta el sombreado del relieve y el
+    // viento se dibuja como campo de conos. Degrada con gracia: si la red falla,
+    // el 3D sigue intacto. La posición solar la calcula el backend (offline).
+
+    function cardinal(deg) {
+      if (deg == null) return "—";
+      const dirs = ["N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+                    "S", "SSO", "SO", "OSO", "O", "ONO", "NO", "NNO"];
+      return dirs[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
+    }
+    function fmtN(v, u) { return (v == null) ? "—" : Math.round(v) + u; }
+
+    // Elimina trazas por nombre (los índices se recalculan: deleteTraces acepta lista).
+    function removeTracesByName(name) {
+      const gd = document.getElementById("plot3d");
+      if (!gd || !gd.data) return;
+      const idx = [];
+      gd.data.forEach((t, k) => { if (t.name === name) idx.push(k); });
+      if (idx.length) Plotly.deleteTraces("plot3d", idx);
+    }
+
+    // Reorienta la luz de la superficie (traza 0) según el sol real, o la deja neutra.
+    function applySun(sun) {
+      const gd = document.getElementById("plot3d");
+      if (!gd || !gd.data || !gd.data.length || !sun) return;
+      Plotly.restyle("plot3d", {
+        "lightposition.x": sun.light.x, "lightposition.y": sun.light.y, "lightposition.z": sun.light.z,
+        "lighting.ambient": sun.light.ambient, "lighting.diffuse": sun.light.diffuse
+      }, [0]);
+    }
+    function applyDefaultLight() {
+      const gd = document.getElementById("plot3d");
+      if (!gd || !gd.data || !gd.data.length) return;
+      Plotly.restyle("plot3d", {
+        "lightposition.x": DEFAULT_LIGHT.x, "lightposition.y": DEFAULT_LIGHT.y, "lightposition.z": DEFAULT_LIGHT.z,
+        "lighting.ambient": DEFAULT_LIGHT.ambient, "lighting.diffuse": DEFAULT_LIGHT.diffuse
+      }, [0]);
+    }
+
+    // Con efectos, las partículas (lluvia/nubes/rayos) cambian el extent de datos
+    // en cada frame y Plotly re-autoescala los ejes → la superficie "vibra". Fijamos
+    // el rango de la escena (incluyendo el cielo donde van las nubes) para estabilizar.
+    // Con efectos, las nubes van por encima del terreno → se extiende SOLO el rango Z
+    // para que entren, y se ajusta aspectratio.z para conservar la proporción 1:1:1.
+    // Los rangos X/Y/Z ya son explícitos desde renderSurface, así que la escena no
+    // re-autoescala al mover partículas (no "vibra").
+    const baseOf = (d) => Math.max(Math.max(...d.x) - Math.min(...d.x), Math.max(...d.y) - Math.min(...d.y)) || 1;
+    function fixSceneRange(d) {
+      const gd = document.getElementById("plot3d");
+      if (!gd || !gd.data || !gd.data.length) return;
+      const range = (d.zmax - d.zmin) || 1;
+      const zTop = d.zmax + Math.max(300, range * 0.5) + range * 0.25;   // techo de nubes
+      Plotly.relayout("plot3d", {
+        "scene.zaxis.range": [d.zmin, zTop],
+        "scene.aspectratio.z": (zTop - d.zmin) / baseOf(d)               // mantiene 1:1:1
+      });
+    }
+    function freeSceneRange() {
+      const gd = document.getElementById("plot3d");
+      if (!gd || !gd.data || !gd.data.length || !lastSurfaceData) return;
+      const d = lastSurfaceData;
+      Plotly.relayout("plot3d", {
+        "scene.zaxis.range": [d.zmin, d.zmax],
+        "scene.aspectratio.z": ((d.zmax - d.zmin) || 1) / baseOf(d)
+      });
+    }
+
+    // Paleta CÁLIDA por intensidad (km/h). El azul queda reservado al agua y el
+    // blanco al trazo del perfil: así el viento nunca se confunde con los ríos.
+    function windColor(speed) {
+      return speed >= 30 ? "#ff6e40" : speed >= 15 ? "#ffb300" : "#ffe082";
+    }
+    // ---- Animación del viento: partículas que fluyen sobre el AOI ----
+    // El viento de Open-Meteo es ~uniforme en el AOI; lo que se ve es dirección +
+    // rapidez. N partículas derivan en la dirección del viento (paso ∝ rapidez) y se
+    // reinyectan al salir del rectángulo o envejecer. Un rastro corto (cola→cabeza)
+    // en UNA traza scatter3d, refrescada por rAF (~30 fps). Puramente visual.
+    let windAnim = { raf: null };
+
+    function stopWindAnimation() {
+      if (windAnim.raf) { cancelAnimationFrame(windAnim.raf); windAnim.raf = null; }
+      removeTracesByName("viento-anim");
+    }
+
+    function startWindAnimation(d, weather) {
+      stopWindAnimation();
+      const w = weather && weather.wind;
+      if (!w || !(w.speed > 0)) return false;
+      const minX = Math.min(...d.x), maxX = Math.max(...d.x);
+      const minY = Math.min(...d.y), maxY = Math.max(...d.y);
+      const mag = Math.hypot(w.u, w.v) || 1;
+      const dirx = w.u / mag, diry = w.v / mag;                    // dirección unitaria (hacia donde sopla)
+      const off = Math.max(30, (d.zmax - d.zmin) * 0.12);
+      const col = windColor(w.speed);
+      const span = Math.max(maxX - minX, maxY - minY) || 1;
+      const step = (span / 220) * Math.max(0.4, Math.min(2.2, w.speed / 15));  // m/frame, escala con rapidez
+      const trail = step * 6;
+      const N = 120;
+
+      const spawn = (p) => {
+        p.x = minX + Math.random() * (maxX - minX);
+        p.y = minY + Math.random() * (maxY - minY);
+        p.life = 40 + Math.random() * 80;                          // vida en frames
+        p.age = Math.random() * p.life;                            // desfasadas
+      };
+      const particles = Array.from({ length: N }, () => { const p = {}; spawn(p); return p; });
+
+      Plotly.addTraces("plot3d", [{
+        type: "scatter3d", mode: "lines", x: [], y: [], z: [],
+        line: { color: col, width: 4 }, connectgaps: false,
+        hoverinfo: "skip", showlegend: false, name: "viento-anim"
+      }]).then(() => {
+        let last = 0;
+        const frame = (now) => {
+          if (plotBusy) { windAnim.raf = requestAnimationFrame(frame); return; }   // pausa al interactuar
+          if (now - last < 33) { windAnim.raf = requestAnimationFrame(frame); return; }  // ~30 fps
+          last = now;
+          const gd = document.getElementById("plot3d");
+          const idx = gd && gd.data ? gd.data.findIndex(t => t.name === "viento-anim") : -1;
+          if (idx < 0) { windAnim.raf = null; return; }            // traza removida → frena solo
+          const xs = [], ys = [], zs = [];
+          for (const p of particles) {
+            p.age++;
+            p.x += dirx * step; p.y += diry * step;
+            let z = interpZ(d, p.x, p.y);
+            if (z == null || p.age > p.life) { spawn(p); z = interpZ(d, p.x, p.y); }
+            if (z == null) continue;
+            const tx = p.x - dirx * trail, ty = p.y - diry * trail;
+            const tz = interpZ(d, tx, ty);
+            xs.push(tx, p.x, null);
+            ys.push(ty, p.y, null);
+            zs.push((tz == null ? z : tz) + off, z + off, null);
+          }
+          Plotly.restyle("plot3d", { x: [xs], y: [ys], z: [zs] }, [idx]);
+          windAnim.raf = requestAnimationFrame(frame);
+        };
+        windAnim.raf = requestAnimationFrame(frame);
+      });
+      return true;
+    }
+
+    // ===================== EFECTOS ATMOSFÉRICOS SOBRE EL 3D =====================
+    // ESPACIAL: en vez de una condición única para todo el mapa, se trae un CAMPO
+    // (/api/weather/field) — una grilla de celdas con precip/nubes/código — y cada
+    // efecto (nubes, lluvia, nieve, rayos) se distribuye SOLO en las celdas que lo
+    // tienen. En un AOI chico todas las celdas caen en la misma celda del modelo
+    // (~11 km) → resulta uniforme, igual que antes. Clasificar primero y renderizar
+    // después deja el sistema extensible (sumar granizo = otra rama + otra capa).
+    // Puramente visual; un loop rAF (~30 fps) maneja todas las capas.
+
+    // Condición de UNA celda → intensidades (0–1) y banderas. La lluvia/nieve se
+    // gatilla SOLO si realmente precipita ahora (precip_mm > 0), no por el código.
+    function classifyWeather(w) {
+      const cloud = (w.cloud_pct == null ? 0 : w.cloud_pct) / 100;
+      const code = w.code;
+      const precip = (w.precip_mm == null ? 0 : w.precip_mm);     // mm que CAE ahora
+      const thunderCode = code === 95 || code === 96 || code === 99;
+      const fog = code === 45 || code === 48;
+      const isSnowCode = c => (c >= 71 && c <= 77) || c === 85 || c === 86;
+      const raining = precip > 0;
+      const snowing = raining && isSnowCode(code);
+      const wet = raining ? Math.min(1, precip / 4) : 0;          // ~4 mm ≈ fuerte; 0.2 mm ≈ traza
+      const rain = (raining && !snowing) ? wet : 0;
+      const snow = snowing ? wet : 0;
+      const thunder = thunderCode && raining;                    // rayos solo si cae agua
+      let cloudiness = cloud;
+      if (raining) cloudiness = Math.max(cloudiness, 0.7);
+      if (fog) cloudiness = Math.max(cloudiness, 0.55);
+      return { cloudiness, rain, snow, thunder, fog };
+    }
+
+    let fxAnim = { raf: null }, fxToken = 0;
+    function stopWeatherFx() {
+      fxToken++;                                                 // invalida cualquier fetch en vuelo
+      if (fxAnim.raf) { cancelAnimationFrame(fxAnim.raf); fxAnim.raf = null; }
+      removeTracesByName("nubes"); removeTracesByName("precip");
+      removeTracesByName("precip-nieve"); removeTracesByName("rayo");
+    }
+
+    // bbox del AOI (lat/lon) reconstruido desde la malla 3D, para pedir el campo.
+    function aoiPolygon(d) {
+      const west = d.lon0 + Math.min(...d.x) / d.mx, east = d.lon0 + Math.max(...d.x) / d.mx;
+      const south = d.lat0 + Math.min(...d.y) / d.my, north = d.lat0 + Math.max(...d.y) / d.my;
+      return [{ lat: south, lon: west }, { lat: north, lon: west },
+              { lat: north, lon: east }, { lat: south, lon: east }];
+    }
+
+    async function startWeatherFx(d, weather) {
+      const myToken = fxToken;                                   // refreshWeather ya hizo stopWeatherFx()
+
+      // 1) Campo de clima del AOI (precip/nubes/código por celda)
+      let field = null;
+      try {
+        const r = await fetch("/api/weather/field", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ polygon: aoiPolygon(d) })
+        });
+        field = r.ok ? await r.json() : null;
+      } catch (_) { field = null; }
+      if (myToken !== fxToken) return false;                     // se canceló mientras buscaba
+
+      const minX = Math.min(...d.x), maxX = Math.max(...d.x);
+      const minY = Math.min(...d.y), maxY = Math.max(...d.y);
+      const range = (d.zmax - d.zmin) || 1;
+      const span = Math.max(maxX - minX, maxY - minY) || 1;
+      const cloudZ = d.zmax + Math.max(300, range * 0.5);
+      const zGround = (x, y) => { const z = interpZ(d, x, y); return z == null ? d.zmin : z; };
+
+      // 2) Celdas: clasificación + centro en metros locales. Sin campo → 1 celda (centro).
+      const rows = field ? field.rows : 1, cols = field ? field.cols : 1;
+      const cells = [];
+      for (let r = 0; r < rows; r++) {
+        for (let c = 0; c < cols; c++) {
+          const src = field ? field.cells[r * cols + c]
+                            : { precip_mm: weather.precip_mm, cloud_pct: weather.cloud_pct, code: weather.code };
+          const lon = field ? (cols > 1 ? field.west + (field.east - field.west) * c / (cols - 1) : (field.west + field.east) / 2) : d.lon0;
+          const lat = field ? (rows > 1 ? field.north - (field.north - field.south) * r / (rows - 1) : (field.north + field.south) / 2) : d.lat0;
+          cells.push({ cls: classifyWeather(src), cx: (lon - d.lon0) * d.mx, cy: (lat - d.lat0) * d.my });
+        }
+      }
+      // media celda (en metros), para repartir partículas dentro de cada una
+      const hx = (cols > 1 ? (maxX - minX) / (cols - 1) : (maxX - minX)) / 2;
+      const hy = (rows > 1 ? (maxY - minY) / (rows - 1) : (maxY - minY)) / 2;
+
+      const cloudCells = cells.filter(c => c.cls.cloudiness >= 0.12);
+      const rainCells = cells.filter(c => c.cls.rain > 0);
+      const snowCells = cells.filter(c => c.cls.snow > 0);
+      const thunderCells = cells.filter(c => c.cls.thunder);
+      if (!cloudCells.length && !rainCells.length && !snowCells.length) return false;
+
+      const wd = (lastWeather && lastWeather.wind) || {};
+      const wmag = Math.hypot(wd.u || 0, wd.v || 0) || 1;
+      const wux = (wd.u || 0) / wmag, wuy = (wd.v || 0) / wmag;
+      const inCell = (cell) => ({ x: cell.cx + (Math.random() * 2 - 1) * hx, y: cell.cy + (Math.random() * 2 - 1) * hy });
+      const picker = (arr, wfn) => {                             // elige celda al azar, ponderada
+        const ws = arr.map(wfn), tot = ws.reduce((a, b) => a + b, 0) || 1;
+        return () => { let t = Math.random() * tot; for (let i = 0; i < arr.length; i++) { t -= ws[i]; if (t <= 0) return arr[i]; } return arr[arr.length - 1]; };
+      };
+
+      // --- nubes: puffs sobre celdas nubladas (densidad ∝ nubosidad de la zona) ---
+      const cloudSum = cells.reduce((a, c) => a + c.cls.cloudiness, 0);
+      const fogMode = cells.some(c => c.cls.fog) && !rainCells.length && !thunderCells.length;
+      // Densidad POR celda nublada (no por fracción del total): cada sector se ve
+      // poblado sin importar cuán grande sea el AOI ni cuántas celdas tenga la grilla.
+      const nClouds = Math.min(380, cloudCells.length * 12);
+      const cloudOpacity = Math.min(0.45, 0.12 + (cloudSum / Math.max(1, cells.length)) * 0.32);
+      const pickCloud = cloudCells.length ? picker(cloudCells, c => c.cls.cloudiness) : null;
+      const clouds = Array.from({ length: nClouds }, () => {
+        const p = inCell(pickCloud());
+        const cz = (fogMode ? d.zmin + range * 0.18 : cloudZ) + (Math.random() - 0.5) * (fogMode ? range * 0.12 : range * 0.28);
+        return { x: p.x, y: p.y, z: cz, r: 16 + Math.random() * 26 };
+      });
+
+      // --- precipitación: lluvia y nieve, cada una en SUS celdas ---
+      const maxRainI = rainCells.reduce((m, c) => Math.max(m, c.cls.rain), 0);
+      // Densidad por celda afectada → cada sector con lluvia/nieve queda bien poblado
+      // (∝ cantidad de celdas mojadas), no diluido entre todo el mapa.
+      const nRain = Math.min(620, Math.round(rainCells.length * 45 * (0.5 + maxRainI)));
+      const nSnow = Math.min(500, snowCells.length * 40);
+      const fallR = (span / 130) * (0.5 + maxRainI), fallS = (span / 130) * 0.35;
+      const streakR = range * (0.025 + 0.03 * maxRainI);
+      const pickRain = rainCells.length ? picker(rainCells, c => c.cls.rain) : null;
+      const pickSnow = snowCells.length ? picker(snowCells, c => c.cls.snow) : null;
+      const mkDrop = (pk) => { const p = inCell(pk()); return { x: p.x, y: p.y, z: d.zmin + Math.random() * (cloudZ - d.zmin) }; };
+      const rainDrops = Array.from({ length: nRain }, () => mkDrop(pickRain));
+      const snowDrops = Array.from({ length: nSnow }, () => mkDrop(pickSnow));
+
+      // --- rayos: solo en celdas con tormenta ---
+      const pickThunder = thunderCells.length ? picker(thunderCells, () => 1) : null;
+      const bolt = { frames: 0, next: 30 + Math.floor(Math.random() * 60) };
+      const baseAmbient = (lastWeather && lastWeather.sun)   // la luz solar siempre está activa con los efectos
+        ? lastWeather.sun.light.ambient : DEFAULT_LIGHT.ambient;
+
+      const traces = [
+        { type: "scatter3d", mode: "markers", x: clouds.map(c => c.x), y: clouds.map(c => c.y), z: clouds.map(c => c.z),
+          marker: { size: clouds.map(c => c.r), color: "#cfd8dc", opacity: cloudOpacity, line: { width: 0 } },
+          hoverinfo: "skip", showlegend: false, name: "nubes" },
+        { type: "scatter3d", mode: "lines", x: [], y: [], z: [],
+          line: { color: "#9fd8ff", width: 1.5 }, connectgaps: false, hoverinfo: "skip", showlegend: false, name: "precip" },
+        { type: "scatter3d", mode: "lines", x: [], y: [], z: [],
+          line: { color: "#eaf6ff", width: 2.5 }, connectgaps: false, hoverinfo: "skip", showlegend: false, name: "precip-nieve" },
+        { type: "scatter3d", mode: "lines", x: [], y: [], z: [],
+          line: { color: "#fff7c0", width: 4 }, connectgaps: false, hoverinfo: "skip", showlegend: false, name: "rayo" }
+      ];
+
+      await Plotly.addTraces("plot3d", traces);
+      if (myToken !== fxToken) { stopWeatherFx(); return false; }  // canceló durante el addTraces
+
+      let last = 0, tick = 0;
+      const frame = (now) => {
+        if (plotBusy) { fxAnim.raf = requestAnimationFrame(frame); return; }   // pausa al interactuar
+        if (now - last < 33) { fxAnim.raf = requestAnimationFrame(frame); return; }   // ~30 fps
+        last = now; tick++;
+        const gd = document.getElementById("plot3d");
+        if (!gd || !gd.data) { fxAnim.raf = null; return; }
+        const at = name => gd.data.findIndex(t => t.name === name);
+        const iCloud = at("nubes"), iRain = at("precip"), iSnow = at("precip-nieve"), iBolt = at("rayo");
+        if (iCloud < 0 && iRain < 0) { fxAnim.raf = null; return; }   // capas removidas → frena solo
+
+        if (iRain >= 0 && nRain) {                                // lluvia
+          const xs = [], ys = [], zs = [];
+          for (const p of rainDrops) {
+            p.z -= fallR; p.x += wux * fallR * 0.15; p.y += wuy * fallR * 0.15;
+            if (p.z <= zGround(p.x, p.y)) { const q = mkDrop(pickRain); p.x = q.x; p.y = q.y; p.z = cloudZ + Math.random() * range * 0.2; continue; }
+            const sx = p.x + wux * streakR * 0.4, sy = p.y + wuy * streakR * 0.4;
+            xs.push(sx, p.x, null); ys.push(sy, p.y, null); zs.push(p.z + streakR, p.z, null);
+          }
+          Plotly.restyle("plot3d", { x: [xs], y: [ys], z: [zs] }, [iRain]);
+        }
+        if (iSnow >= 0 && nSnow) {                                // nieve
+          const xs = [], ys = [], zs = [], sl = range * 0.012;
+          for (const p of snowDrops) {
+            p.z -= fallS; p.x += wux * fallS * 0.3 + (Math.random() - 0.5) * span * 0.003; p.y += wuy * fallS * 0.3;
+            if (p.z <= zGround(p.x, p.y)) { const q = mkDrop(pickSnow); p.x = q.x; p.y = q.y; p.z = cloudZ + Math.random() * range * 0.2; continue; }
+            xs.push(p.x, p.x, null); ys.push(p.y, p.y, null); zs.push(p.z + sl, p.z, null);
+          }
+          Plotly.restyle("plot3d", { x: [xs], y: [ys], z: [zs] }, [iSnow]);
+        }
+        if (iCloud >= 0 && nClouds && tick % 5 === 0) {           // deriva lenta de nubes
+          for (const c of clouds) {
+            c.x += wux * fallR * 0.15; c.y += wuy * fallR * 0.15;
+            if (c.x > maxX) c.x = minX; else if (c.x < minX) c.x = maxX;
+            if (c.y > maxY) c.y = minY; else if (c.y < minY) c.y = maxY;
+          }
+          Plotly.restyle("plot3d", { x: [clouds.map(c => c.x)], y: [clouds.map(c => c.y)] }, [iCloud]);
+        }
+        if (iBolt >= 0 && pickThunder) {                          // rayos
+          if (bolt.frames > 0) {
+            if (--bolt.frames === 0) {
+              Plotly.restyle("plot3d", { x: [[]], y: [[]], z: [[]] }, [iBolt]);
+              Plotly.restyle("plot3d", { "lighting.ambient": baseAmbient }, [0]);
+            }
+          } else if (--bolt.next <= 0) {
+            const cell = pickThunder();
+            let cx = cell.cx + (Math.random() * 2 - 1) * hx, cy = cell.cy + (Math.random() * 2 - 1) * hy;
+            const gz = zGround(cx, cy), seg = 9, xs = [], ys = [], zs = [];
+            for (let k = 0; k <= seg; k++) {
+              const f = k / seg;
+              cx += (Math.random() - 0.5) * span * 0.03; cy += (Math.random() - 0.5) * span * 0.03;
+              xs.push(cx); ys.push(cy); zs.push(cloudZ + (gz - cloudZ) * f);
+            }
+            Plotly.restyle("plot3d", { x: [xs], y: [ys], z: [zs] }, [iBolt]);
+            Plotly.restyle("plot3d", { "lighting.ambient": Math.min(1, baseAmbient + 0.5) }, [0]);
+            bolt.frames = 3; bolt.next = 45 + Math.floor(Math.random() * 120);   // ~1.5–5 s
+          }
+        }
+        fxAnim.raf = requestAnimationFrame(frame);
+      };
+      fxAnim.raf = requestAnimationFrame(frame);
+      return true;
+    }
+
+    function renderHUD(w) {
+      const hud = document.getElementById("weather-hud");
+      const wind = w.wind || {}, sun = w.sun || {};
+      const arrowRot = (((wind.dir_deg == null ? 0 : wind.dir_deg) + 180) % 360);  // hacia donde sopla
+      const vis = w.visibility_m == null ? "—" : (w.visibility_m / 1000).toFixed(1) + " km";
+      const hhmm = s => (s || "").slice(11, 16) || "—";
+      hud.innerHTML =
+        `<div class="wx-cond">${w.condition || "clima"}</div>` +
+        `<div class="wx-temp">${w.temp_c == null ? "—" : Math.round(w.temp_c) + "°"}` +
+          `<span class="wx-feel">ST ${fmtN(w.feels_c, "°")}</span></div>` +
+        `<div class="wx-grid">` +
+          `<span>viento</span><span><b class="wx-arrow" style="transform:rotate(${arrowRot}deg)">↑</b> ` +
+            `${fmtN(wind.speed, "")} ${wind.unit || ""} ${cardinal(wind.dir_deg)}</span>` +
+          `<span>ráfagas</span><span>${fmtN(wind.gust, "")} ${wind.unit || ""}</span>` +
+          `<span>lluvia</span><span>${w.precip_mm == null ? "—" : w.precip_mm + " mm"}</span>` +
+          `<span>nubes</span><span>${fmtN(w.cloud_pct, "%")}</span>` +
+          `<span>humedad</span><span>${fmtN(w.humidity_pct, "%")}</span>` +
+          `<span>visib.</span><span>${vis}</span>` +
+          `<span>sol</span><span>${sun.is_up ? Math.round(sun.elevation_deg) + "° " + cardinal(sun.azimuth_deg) : "bajo horizonte"}</span>` +
+          `<span>orto/ocaso</span><span>${hhmm(w.sunrise)} / ${hhmm(w.sunset)}</span>` +
+        `</div>` +
+        ((w.notes && w.notes.length) ? `<div class="wx-note">⚠ ${w.notes[0]}</div>` : "");
+    }
+
+    // --- Hora del sol (scrubber): permite simular sombras a otra hora del día ---
+    const sunTime = document.getElementById("sun-time");
+    const sunTimeLbl = document.getElementById("sun-time-lbl");
+    function setSunLabel() {
+      const m = parseInt(sunTime.value) || 0;
+      const hh = String(Math.floor(m / 60)).padStart(2, "0"), mm = String(m % 60).padStart(2, "0");
+      sunTimeLbl.textContent = sunManual ? `${hh}:${mm}` : "ahora";
+    }
+    function sunAtIso() {                       // null → el backend usa "ahora"
+      if (!sunManual) return null;
+      const m = parseInt(sunTime.value) || 0;
+      const dt = new Date(); dt.setHours(Math.floor(m / 60), m % 60, 0, 0);
+      return dt.toISOString();
+    }
+
+    async function fetchWeather(d) {
+      const body = { lat: d.lat0, lon: d.lon0, at: sunAtIso() };   // centro del AOI
+      const r = await fetch("/api/weather", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
+      });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      return await r.json();
+    }
+
+    let wxTimer = null;
+    function scheduleWeather() { clearTimeout(wxTimer); wxTimer = setTimeout(refreshWeather, 250); }
+
+    // Un solo interruptor "efectos atmosféricos": HUD de clima + luz solar real +
+    // viento (siempre animado) + nubes/lluvia/nieve/rayos por sector. El agua es
+    // independiente (se dibuja por defecto, configurable desde el Makefile).
+    async function refreshWeather() {
+      const hud = document.getElementById("weather-hud");
+      const d = lastSurfaceData;
+      const on = document.getElementById("fx-all").checked;
+      removeTracesByName("viento");
+      stopWindAnimation();
+      stopWeatherFx();
+      if (!d || !on) {
+        hud.style.display = "none";
+        applyDefaultLight();
+        freeSceneRange();                  // vuelve al autoajuste normal del terreno
+        return;
+      }
+      hud.style.display = "block";
+      if (!lastWeather) hud.innerHTML = `<div class="wx-load">clima…</div>`;
+      try {
+        const w = await fetchWeather(d);
+        lastWeather = w;
+        fixSceneRange(d);                  // estabiliza la escena antes de animar
+        renderHUD(w);
+        applySun(w.sun);                         // luz solar real
+        startWindAnimation(d, w);                // viento siempre animado
+        if (!(w.wind && w.wind.speed > 0)) hud.innerHTML += `<div class="wx-note">viento en calma</div>`;
+        startWeatherFx(d, w);                     // nubes/lluvia/nieve/rayos por sector
+      } catch (err) {
+        hud.innerHTML = `<div class="wx-err">clima no disponible</div>`;
+      }
+    }
+
+    // El scrubber de hora del sol se muestra solo con los efectos activos.
+    function syncSunTimeRow() {
+      document.getElementById("sun-time-row").style.display =
+        document.getElementById("fx-all").checked ? "flex" : "none";
+    }
+    document.getElementById("fx-all").addEventListener("change", () => {
+      syncSunTimeRow();
+      refreshWeather();
+    });
+    sunTime.addEventListener("input", () => { sunManual = true; setSunLabel(); scheduleWeather(); });
+    document.getElementById("sun-now").addEventListener("click", () => {
+      sunManual = false;
+      const now = new Date(); sunTime.value = now.getHours() * 60 + now.getMinutes();
+      setSunLabel(); refreshWeather();
+    });
+    (function initSun() {
+      const now = new Date(); sunTime.value = now.getHours() * 60 + now.getMinutes(); setSunLabel();
+      syncSunTimeRow();
+    })();
+
+    document.getElementById("reset").onclick = resetAll;
+    function resetAll() {
+      clearRect();
+      document.getElementById("results").innerHTML = "";
+      document.getElementById("notes").innerHTML = "";
+      document.getElementById("m3d-msg").textContent = "";
+      Plotly.purge("plot3d");
+      stopWindAnimation(); stopWeatherFx();
+      if (hoverMarker) { map.removeLayer(hoverMarker); hoverMarker = null; }
+      document.getElementById("weather-hud").style.display = "none";
+      lastSurfaceData = null; lastWeather = null;
+    }
+
+    function fmt(v, u) { return v === null || v === undefined ? "—" : v.toLocaleString() + u; }
+    function setResults(rows) {
+      document.getElementById("results").innerHTML = rows.map(
+        ([k, v]) => `<div class="row"><span class="k">${k}</span><span class="v">${v}</span></div>`
+      ).join("");
+    }
+
+    // ---------- Redibujar al cambiar tamaño ----------
+    window.addEventListener("resize", () => {
+      map.invalidateSize();
+      const p3d = document.getElementById("plot3d");
+      if (p3d && p3d.data) Plotly.Plots.resize(p3d);
+    });
+  </script>
+</body>
+</html>
